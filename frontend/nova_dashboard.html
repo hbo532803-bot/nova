@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nova Dashboard</title>
+    <style>
+        body { font-family: Arial; background: #111; color: #eee; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #444; padding: 8px; text-align: center; }
+        th { background: #222; }
+        .good { color: #4CAF50; }
+        .bad { color: #f44336; }
+    </style>
+</head>
+<body>
+
+<h1>Nova Control Dashboard</h1>
+
+<div id="system"></div>
+
+<h2>Experiments</h2>
+<table id="experiments"></table>
+
+<h2>Agents</h2>
+<table id="agents"></table>
+
+<script>
+async function loadDashboard() {
+    const res = await fetch('/nova/dashboard');
+    const data = await res.json();
+
+    document.getElementById("system").innerHTML = `
+        <p>Confidence: ${data.system.confidence.score}</p>
+        <p>Autonomy: ${data.system.confidence.autonomy}</p>
+        <p>Total Revenue: ${data.system.total_revenue}</p>
+        <p>Total Cost: ${data.system.total_cost}</p>
+        <p>Net Profit: ${data.system.net_profit}</p>
+    `;
+
+    renderTable("experiments", data.experiments);
+    renderTable("agents", data.agents);
+}
+
+function renderTable(id, rows) {
+    if (!rows.length) return;
+    const table = document.getElementById(id);
+
+    let headers = Object.keys(rows[0]);
+    table.innerHTML = "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
+
+    rows.forEach(row => {
+        table.innerHTML += "<tr>" +
+            headers.map(h => `<td>${row[h]}</td>`).join("") +
+            "</tr>";
+    });
+}
+
+loadDashboard();
+</script>
+
+</body>
+</html>
