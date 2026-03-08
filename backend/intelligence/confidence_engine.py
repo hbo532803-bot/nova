@@ -1,6 +1,6 @@
 # backend/intelligence/confidence_engine.py
 
-from backend.database import get_connection
+from backend.db_init import get_connection
 from datetime import datetime
 
 

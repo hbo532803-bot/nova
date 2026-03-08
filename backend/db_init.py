@@ -1,21 +1,36 @@
 from pathlib import Path
 import sqlite3
 
-# 🔥 SINGLE SOURCE OF TRUTH
+# ===============================
+# DATABASE PATH
+# ===============================
+
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "nova.db"
 
+
 def get_connection():
     print(f"📂 Using DB at: {DB_PATH}")
-    return sqlite3.connect(DB_PATH)
+
+    conn = sqlite3.connect(
+        DB_PATH,
+        check_same_thread=False
+    )
+
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+
+    return conn
 
 
 def initialize_all_tables(reset=False):
+
     conn = get_connection()
     cursor = conn.cursor()
 
     if reset:
         print("⚠ RESET MODE: Dropping all tables")
+
         cursor.executescript("""
         DROP TABLE IF EXISTS goals;
         DROP TABLE IF EXISTS plan_memory;
@@ -26,12 +41,15 @@ def initialize_all_tables(reset=False):
         DROP TABLE IF EXISTS agents;
         DROP TABLE IF EXISTS capital_pool;
         DROP TABLE IF EXISTS api_usage;
+        DROP TABLE IF EXISTS market_memory;
         DROP TABLE IF EXISTS market_signals;
         DROP TABLE IF EXISTS market_niches;
         DROP TABLE IF EXISTS market_proposals;
+        DROP TABLE IF EXISTS decision_memory;
         """)
 
     # ================= CORE =================
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,6 +98,7 @@ def initialize_all_tables(reset=False):
     """)
 
     # ================= ECONOMIC =================
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS economic_experiments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,6 +131,11 @@ def initialize_all_tables(reset=False):
     )
     """)
 
+    # Ensure capital pool row exists
+    cursor.execute("""
+    INSERT OR IGNORE INTO capital_pool (id) VALUES (1)
+    """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS api_usage (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,16 +148,15 @@ def initialize_all_tables(reset=False):
     # ================= MARKET =================
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS market_memory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            week_tag TEXT,
-            total_niches INTEGER,
-            attack_count INTEGER,
-            avg_cash_score REAL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-    
+    CREATE TABLE IF NOT EXISTS market_memory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        week_tag TEXT,
+        total_niches INTEGER,
+        attack_count INTEGER,
+        avg_cash_score REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS market_signals (
@@ -169,7 +192,7 @@ def initialize_all_tables(reset=False):
     CREATE TABLE IF NOT EXISTS market_proposals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         niche_name TEXT,
-        week _tag TEXT,
+        week_tag TEXT,
         cash_score REAL,
         proposed_budget REAL,
         status TEXT,
@@ -177,21 +200,21 @@ def initialize_all_tables(reset=False):
     )
     """)
 
-            # ================= DECISION MEMORY =================
+    # ================= DECISION MEMORY =================
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS decision_memory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            decision_type TEXT,
-            entity_id INTEGER,
-            context_snapshot TEXT,
-            reason TEXT,
-            expected_outcome TEXT,
-            actual_outcome TEXT,
-            performance_score REAL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
+    CREATE TABLE IF NOT EXISTS decision_memory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        decision_type TEXT,
+        entity_id INTEGER,
+        context_snapshot TEXT,
+        reason TEXT,
+        expected_outcome TEXT,
+        actual_outcome TEXT,
+        performance_score REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
     conn.commit()
     conn.close()
