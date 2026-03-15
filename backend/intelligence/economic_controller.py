@@ -1,5 +1,5 @@
 from datetime import datetime
-from backend.database import get_connection
+from backend.database import get_db
 from backend.intelligence.confidence_engine import ConfidenceEngine
 from backend.intelligence.roi_engine import ROIEngine
 
@@ -17,25 +17,26 @@ class EconomicController:
     ]
 
     def __init__(self):
-        self.conn = get_connection()
+
         self.roi_engine = ROIEngine()
         self.confidence = ConfidenceEngine()
 
     # =========================================================
-    # -------------------- CORE ECONOMIC LOOP -----------------
+    # CORE ECONOMIC LOOP
     # =========================================================
 
     def run_full_cycle(self):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT id, status
-            FROM economic_experiments
-            WHERE status NOT IN ('FAILED', 'ARCHIVED')
-        """)
+            cursor.execute("""
+                SELECT id, status
+                FROM economic_experiments
+                WHERE status NOT IN ('FAILED', 'ARCHIVED')
+            """)
 
-        experiments = cursor.fetchall()
+            experiments = cursor.fetchall()
 
         if not experiments:
             return {"status": "no_active_experiments"}
@@ -63,61 +64,64 @@ class EconomicController:
         }
 
     # =========================================================
-    # -------------------- LIFECYCLE LOGIC --------------------
+    # LIFECYCLE LOGIC
     # =========================================================
 
-    def evaluate_progress(self, experiment_id: int):
+    def evaluate_progress(self, experiment_id):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT status, validation_score, revenue_generated, iteration
-            FROM economic_experiments
-            WHERE id=?
-        """, (experiment_id,))
+            cursor = conn.cursor()
 
-        row = cursor.fetchone()
-
-        if not row:
-            return {"error": "Experiment not found"}
-
-        status = row["status"]
-        validation = row["validation_score"]
-        revenue = row["revenue_generated"]
-        iteration = row["iteration"]
-
-        new_status = status
-
-        if validation and validation >= 70 and status == "TESTING":
-            new_status = "LIVE"
-
-        if revenue and revenue >= 1000 and status == "LIVE":
-            new_status = "SCALING"
-
-        if validation is not None and validation < 30 and iteration and iteration > 2:
-            new_status = "FAILED"
-
-        if new_status != status:
             cursor.execute("""
-                UPDATE economic_experiments
-                SET status=?, last_tested=?
+                SELECT status, validation_score, revenue_generated, iteration
+                FROM economic_experiments
                 WHERE id=?
-            """, (new_status, datetime.utcnow(), experiment_id))
+            """, (experiment_id,))
 
-            self.conn.commit()
+            row = cursor.fetchone()
 
-            return {
-                "old_status": status,
-                "new_status": new_status
-            }
+            if not row:
+                return {"error": "Experiment not found"}
+
+            status = row["status"]
+            validation = row["validation_score"]
+            revenue = row["revenue_generated"]
+            iteration = row["iteration"]
+
+            new_status = status
+
+            if validation and validation >= 70 and status == "TESTING":
+                new_status = "LIVE"
+
+            if revenue and revenue >= 1000 and status == "LIVE":
+                new_status = "SCALING"
+
+            if validation is not None and validation < 30 and iteration > 2:
+                new_status = "FAILED"
+
+            if new_status != status:
+
+                cursor.execute("""
+                    UPDATE economic_experiments
+                    SET status=?, last_tested=?
+                    WHERE id=?
+                """, (new_status, datetime.utcnow(), experiment_id))
+
+                conn.commit()
+
+                return {
+                    "old_status": status,
+                    "new_status": new_status
+                }
 
         return {"status": "no_change"}
 
     # =========================================================
-    # -------------------- ROI + CAPITAL ----------------------
+    # ROI + CAPITAL
     # =========================================================
 
-    def allocate_capital(self, experiment_id: int):
+    def allocate_capital(self, experiment_id):
 
         roi_result = self.roi_engine.update_roi(experiment_id)
 
@@ -126,35 +130,38 @@ class EconomicController:
 
         roi = roi_result["roi"]
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT capital_allocated
-            FROM economic_experiments
-            WHERE id = ?
-        """, (experiment_id,))
+            cursor = conn.cursor()
 
-        row = cursor.fetchone()
-        capital = row["capital_allocated"] if row else 0
+            cursor.execute("""
+                SELECT capital_allocated
+                FROM economic_experiments
+                WHERE id = ?
+            """, (experiment_id,))
 
-        if capital == 0:
-            capital = 100
+            row = cursor.fetchone()
 
-        if roi > 0.2:
-            capital *= 1.5
-            self.confidence.adjust(+1)
+            capital = row["capital_allocated"] if row else 0
 
-        elif roi < 0:
-            capital *= 0.5
-            self.confidence.adjust(-1)
+            if capital == 0:
+                capital = 100
 
-        cursor.execute("""
-            UPDATE economic_experiments
-            SET capital_allocated = ?
-            WHERE id = ?
-        """, (capital, experiment_id))
+            if roi > 0.2:
+                capital *= 1.5
+                self.confidence.adjust(+1)
 
-        self.conn.commit()
+            elif roi < 0:
+                capital *= 0.5
+                self.confidence.adjust(-1)
+
+            cursor.execute("""
+                UPDATE economic_experiments
+                SET capital_allocated = ?
+                WHERE id = ?
+            """, (capital, experiment_id))
+
+            conn.commit()
 
         return {
             "roi": roi,
@@ -163,74 +170,83 @@ class EconomicController:
         }
 
     # =========================================================
-    # -------------------- AUTO KILL --------------------------
+    # AUTO KILL
     # =========================================================
 
-    def auto_kill_if_needed(self, experiment_id: int):
+    def auto_kill_if_needed(self, experiment_id):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT consecutive_losses
-            FROM economic_experiments
-            WHERE id = ?
-        """, (experiment_id,))
+            cursor = conn.cursor()
 
-        row = cursor.fetchone()
-        if not row:
-            return None
-
-        losses = row["consecutive_losses"]
-
-        if losses >= 3:
             cursor.execute("""
-                UPDATE economic_experiments
-                SET status = 'FAILED'
+                SELECT consecutive_losses
+                FROM economic_experiments
                 WHERE id = ?
             """, (experiment_id,))
-            self.conn.commit()
 
-            self.confidence.adjust(-3)
+            row = cursor.fetchone()
 
-            return {"status": "FAILED"}
+            if not row:
+                return None
+
+            losses = row["consecutive_losses"]
+
+            if losses >= 3:
+
+                cursor.execute("""
+                    UPDATE economic_experiments
+                    SET status = 'FAILED'
+                    WHERE id = ?
+                """, (experiment_id,))
+
+                conn.commit()
+
+                self.confidence.adjust(-3)
+
+                return {"status": "FAILED"}
 
         return {"status": "ACTIVE"}
 
     # =========================================================
-    # -------------------- REVENUE UPDATE ---------------------
+    # REVENUE UPDATE
     # =========================================================
 
-    def update_revenue(self, experiment_id: int, revenue: float):
+    def update_revenue(self, experiment_id, revenue):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            UPDATE economic_experiments
-            SET revenue_generated = revenue_generated + ?
-            WHERE id=?
-        """, (revenue, experiment_id))
+            cursor = conn.cursor()
 
-        self.conn.commit()
+            cursor.execute("""
+                UPDATE economic_experiments
+                SET revenue_generated = revenue_generated + ?
+                WHERE id=?
+            """, (revenue, experiment_id))
+
+            conn.commit()
 
         self.confidence.adjust(+2)
 
         return self.evaluate_progress(experiment_id)
 
     # =========================================================
-    # -------------------- VALIDATION UPDATE ------------------
+    # VALIDATION UPDATE
     # =========================================================
 
-    def update_validation(self, experiment_id: int, score: float):
+    def update_validation(self, experiment_id, score):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            UPDATE economic_experiments
-            SET validation_score = ?, iteration = iteration + 1
-            WHERE id=?
-        """, (score, experiment_id))
+            cursor = conn.cursor()
 
-        self.conn.commit()
+            cursor.execute("""
+                UPDATE economic_experiments
+                SET validation_score = ?, iteration = iteration + 1
+                WHERE id=?
+            """, (score, experiment_id))
+
+            conn.commit()
 
         if score >= 60:
             self.confidence.adjust(+1)
@@ -240,33 +256,35 @@ class EconomicController:
         return self.evaluate_progress(experiment_id)
 
     # =========================================================
-    # -------------------- AGENT REWARD -----------------------
+    # AGENT REWARD
     # =========================================================
 
-    def reward_agents(self, agent_name: str, revenue: float):
+    def reward_agents(self, agent_name, revenue):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT id FROM agents WHERE name=?
-        """, (agent_name,))
+            cursor = conn.cursor()
 
-        row = cursor.fetchone()
+            cursor.execute("""
+                SELECT id FROM agents WHERE name=?
+            """, (agent_name,))
 
-        if not row:
-            return {"error": "Agent not found"}
+            row = cursor.fetchone()
 
-        agent_id = row["id"]
+            if not row:
+                return {"error": "Agent not found"}
 
-        trust_boost = min(10, int(revenue / 500))
+            agent_id = row["id"]
 
-        cursor.execute("""
-            UPDATE agents
-            SET total_revenue = total_revenue + ?
-            WHERE id=?
-        """, (revenue, agent_id))
+            trust_boost = min(10, int(revenue / 500))
 
-        self.conn.commit()
+            cursor.execute("""
+                UPDATE agents
+                SET total_revenue = total_revenue + ?
+                WHERE id=?
+            """, (revenue, agent_id))
+
+            conn.commit()
 
         return {
             "agent_rewarded": agent_name,
@@ -274,58 +292,61 @@ class EconomicController:
         }
 
     # =========================================================
-    # ----------- MARKET → EXPERIMENT (CAPITAL SAFE) ----------
+    # MARKET → EXPERIMENT (CAPITAL SAFE)
     # =========================================================
 
-    def create_experiment_from_market(self, niche_name: str, budget: float):
+    def create_experiment_from_market(self, niche_name, budget):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT total_capital, available_capital, reserved_capital
-            FROM capital_pool
-            WHERE id = 1
-        """)
-        capital_row = cursor.fetchone()
+            cursor = conn.cursor()
 
-        if not capital_row:
-            return {"error": "Capital pool not initialized"}
+            cursor.execute("""
+                SELECT total_capital, available_capital, reserved_capital
+                FROM capital_pool
+                WHERE id = 1
+            """)
 
-        total_capital = capital_row["total_capital"]
-        available_capital = capital_row["available_capital"]
-        reserved_capital = capital_row["reserved_capital"]
+            capital_row = cursor.fetchone()
 
-        max_allowed = available_capital * 0.6
+            if not capital_row:
+                return {"error": "Capital pool not initialized"}
 
-        if budget > max_allowed:
-            return {
-                "status": "rejected",
-                "reason": "Budget exceeds 60% exposure limit",
-                "max_allowed": round(max_allowed, 2)
-            }
+            total_capital = capital_row["total_capital"]
+            available_capital = capital_row["available_capital"]
+            reserved_capital = capital_row["reserved_capital"]
 
-        if budget > available_capital:
-            return {
-                "status": "rejected",
-                "reason": "Insufficient capital"
-            }
+            max_allowed = available_capital * 0.6
 
-        cursor.execute("""
-            INSERT INTO economic_experiments
-            (name, capital_allocated, status, iteration)
-            VALUES (?, ?, 'APPROVED', 0)
-        """, (niche_name, budget))
+            if budget > max_allowed:
+                return {
+                    "status": "rejected",
+                    "reason": "Budget exceeds 60% exposure limit",
+                    "max_allowed": round(max_allowed, 2)
+                }
 
-        new_available = available_capital - budget
-        new_reserved = reserved_capital + budget
+            if budget > available_capital:
+                return {
+                    "status": "rejected",
+                    "reason": "Insufficient capital"
+                }
 
-        cursor.execute("""
-            UPDATE capital_pool
-            SET available_capital = ?, reserved_capital = ?
-            WHERE id = 1
-        """, (new_available, new_reserved))
+            cursor.execute("""
+                INSERT INTO economic_experiments
+                (name, capital_allocated, status, iteration)
+                VALUES (?, ?, 'APPROVED', 0)
+            """, (niche_name, budget))
 
-        self.conn.commit()
+            new_available = available_capital - budget
+            new_reserved = reserved_capital + budget
+
+            cursor.execute("""
+                UPDATE capital_pool
+                SET available_capital = ?, reserved_capital = ?
+                WHERE id = 1
+            """, (new_available, new_reserved))
+
+            conn.commit()
 
         return {
             "status": "approved",

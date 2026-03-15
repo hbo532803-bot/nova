@@ -1,63 +1,78 @@
-from backend.database import get_connection
+from backend.database import get_db
 
 
 class ROIEngine:
 
-    def calculate_roi(self, experiment_id: int):
-        conn = get_connection()
-        cursor = conn.cursor()
+    def calculate_roi(self, experiment_id):
 
-        cursor.execute("""
-            SELECT capital_allocated, cost_incurred, revenue_generated
-            FROM economic_experiments
-            WHERE id = ?
-        """, (experiment_id,))
+        with get_db() as conn:
 
-        row = cursor.fetchone()
-        conn.close()
+            cursor = conn.cursor()
 
-        if not row:
-            return None
+            cursor.execute(
+                """
+                SELECT capital_allocated,
+                       cost_incurred,
+                       revenue_generated
+                FROM economic_experiments
+                WHERE id=?
+                """,
+                (experiment_id,)
+            )
 
-        capital = row["capital_allocated"] or 0
-        cost = row["cost_incurred"] or 0
-        revenue = row["revenue_generated"] or 0
+            row = cursor.fetchone()
 
-        if capital == 0:
-            return 0
+            if not row:
+                return None
 
-        return (revenue - cost) / capital
+            capital = row["capital_allocated"] or 0
+            cost = row["cost_incurred"] or 0
+            revenue = row["revenue_generated"] or 0
 
-    def update_roi(self, experiment_id: int):
+            if capital == 0:
+                return 0
+
+            return (revenue - cost) / capital
+
+    def update_roi(self, experiment_id):
+
         roi = self.calculate_roi(experiment_id)
+
         if roi is None:
             return None
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT consecutive_losses
-            FROM economic_experiments
-            WHERE id = ?
-        """, (experiment_id,))
+            cursor = conn.cursor()
 
-        row = cursor.fetchone()
-        losses = row["consecutive_losses"] if row else 0
+            cursor.execute(
+                """
+                SELECT consecutive_losses
+                FROM economic_experiments
+                WHERE id=?
+                """,
+                (experiment_id,)
+            )
 
-        if roi < 0:
-            losses += 1
-        else:
-            losses = 0
+            row = cursor.fetchone()
 
-        cursor.execute("""
-            UPDATE economic_experiments
-            SET roi = ?, consecutive_losses = ?
-            WHERE id = ?
-        """, (roi, losses, experiment_id))
+            losses = row["consecutive_losses"] if row else 0
 
-        conn.commit()
-        conn.close()
+            if roi < 0:
+                losses += 1
+            else:
+                losses = 0
+
+            cursor.execute(
+                """
+                UPDATE economic_experiments
+                SET roi=?, consecutive_losses=?
+                WHERE id=?
+                """,
+                (roi, losses, experiment_id)
+            )
+
+            conn.commit()
 
         return {
             "roi": roi,

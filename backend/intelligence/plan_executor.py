@@ -8,6 +8,7 @@ class PlanExecutor:
     def execute_plan(self, goal: str, plan: dict):
 
         reflection = ReflectionMemory()
+        confidence = ConfidenceEngine()
 
         for step in plan.get("steps", []):
 
@@ -17,8 +18,9 @@ class PlanExecutor:
                 "message": f"Executing step {step['id']}: {step['description']}"
             })
 
-            # Simulated execution
             success = True
+
+            state_before = confidence.get_score()
 
             reflection.record_reflection({
                 "cycle_id": f"{goal}-{step['id']}",
@@ -26,14 +28,14 @@ class PlanExecutor:
                 "input_objective": step["description"],
                 "execution_result": "Completed",
                 "success": success,
-                "confidence_before": ConfidenceEngine.score,
-                "confidence_after": ConfidenceEngine.score
+                "confidence_before": state_before,
+                "confidence_after": state_before
             })
 
             if success:
-                ConfidenceEngine.success()
+                confidence.adjust(+1)
             else:
-                ConfidenceEngine.failure()
+                confidence.adjust(-1)
 
         broadcast({
             "type": "log",

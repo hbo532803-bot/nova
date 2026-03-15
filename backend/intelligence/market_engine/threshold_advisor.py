@@ -1,43 +1,58 @@
-import sqlite3
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DB_PATH = BASE_DIR / "backend/nova.db"
+from backend.database import get_db
 
 
 class ThresholdAdvisor:
 
     def analyze(self):
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            SELECT week_tag, attack_count, avg_cash_score
-            FROM market_memory
-            ORDER BY id DESC
-            LIMIT 3
-        """)
+            cursor = conn.cursor()
 
-        rows = cursor.fetchall()
-        conn.close()
+            cursor.execute("""
+                SELECT week_tag, attack_count, avg_cash_score
+                FROM market_memory
+                ORDER BY id DESC
+                LIMIT 3
+            """)
+
+            rows = cursor.fetchall()
 
         if len(rows) < 3:
-            return {"status": "insufficient_data"}
 
-        no_attack_weeks = sum(1 for r in rows if r[1] == 0)
-        avg_cash = sum(r[2] for r in rows) / len(rows)
+            return {
+                "status": "insufficient_data"
+            }
+
+        no_attack_weeks = sum(
+            1 for r in rows if r["attack_count"] == 0
+        )
+
+        avg_cash = sum(
+            r["avg_cash_score"] for r in rows
+        ) / len(rows)
 
         suggestion = "no_change"
+
         reason = "System stable"
 
-        if no_attack_weeks == 3:
+        if no_attack_weeks >= 3:
+
             suggestion = "decrease_threshold"
-            reason = "No attack zones detected for 3 consecutive weeks"
+
+            reason = "No opportunities detected for 3 weeks"
 
         elif avg_cash > 75:
+
             suggestion = "increase_threshold"
-            reason = "Market too hot, tightening filter"
+
+            reason = "Market overheated"
+
+        elif avg_cash < 35:
+
+            suggestion = "decrease_threshold"
+
+            reason = "Market too cold"
 
         return {
             "suggestion": suggestion,

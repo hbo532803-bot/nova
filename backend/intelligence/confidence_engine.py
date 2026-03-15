@@ -1,6 +1,4 @@
-# backend/intelligence/confidence_engine.py
-
-from backend.db_init import get_connection
+from backend.database import get_db
 from datetime import datetime
 
 
@@ -10,29 +8,8 @@ class ConfidenceEngine:
     MAX_SCORE = 100
     DEFAULT_SCORE = 50
 
-    # ---------------------------------
-    # Ensure Table Exists
-    # ---------------------------------
-    def _ensure_table(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+    def _map_autonomy(self, score):
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS confidence_state (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                score REAL NOT NULL,
-                autonomy TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        conn.commit()
-        conn.close()
-
-    # ---------------------------------
-    # Internal Autonomy Mapping
-    # ---------------------------------
-    def _map_autonomy(self, score: float) -> str:
         if score < 60:
             return "MANUAL_ONLY"
         elif score < 75:
@@ -42,90 +19,110 @@ class ConfidenceEngine:
         else:
             return "FULL_AUTONOMY"
 
-    # ---------------------------------
-    # Get Latest State
-    # ---------------------------------
+    def _ensure_row(self):
+
+        with get_db() as conn:
+
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT id FROM confidence_state WHERE id=1"
+            )
+
+            if not cursor.fetchone():
+
+                cursor.execute(
+                    """
+                    INSERT INTO confidence_state (id,score,autonomy)
+                    VALUES (1,?,?)
+                    """,
+                    (self.DEFAULT_SCORE, "MANUAL_ONLY"),
+                )
+
+                conn.commit()
+
     def get_state(self):
-        self._ensure_table()
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        self._ensure_row()
 
-        cursor.execute("""
-            SELECT score, autonomy
-            FROM confidence_state
-            ORDER BY id DESC
-            LIMIT 1
-        """)
+        with get_db() as conn:
 
-        row = cursor.fetchone()
-        conn.close()
+            cursor = conn.cursor()
 
-        if row:
+            cursor.execute(
+                "SELECT score, autonomy FROM confidence_state WHERE id=1"
+            )
+
+            row = cursor.fetchone()
+
             return {
                 "score": row["score"],
                 "autonomy": row["autonomy"]
             }
 
-        # Initialize if empty
-        return self.set_score(self.DEFAULT_SCORE)
+    def adjust(self, delta):
 
-    # ---------------------------------
-    # Adjust Confidence
-    # ---------------------------------
-    def adjust(self, delta: float):
         state = self.get_state()
-        current = state["score"]
 
         new_score = max(
             self.MIN_SCORE,
-            min(self.MAX_SCORE, current + delta)
+            min(self.MAX_SCORE, state["score"] + delta)
         )
 
         autonomy = self._map_autonomy(new_score)
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            INSERT INTO confidence_state (score, autonomy, updated_at)
-            VALUES (?, ?, ?)
-        """, (new_score, autonomy, datetime.utcnow()))
+            cursor = conn.cursor()
 
-        conn.commit()
-        conn.close()
+            cursor.execute(
+                """
+                UPDATE confidence_state
+                SET score=?, autonomy=?, updated_at=?
+                WHERE id=1
+                """,
+                (new_score, autonomy, datetime.utcnow())
+            )
+
+            conn.commit()
 
         return {
             "score": new_score,
             "autonomy": autonomy
         }
 
-    # ---------------------------------
-    # Direct Set (Admin Only)
-    # ---------------------------------
-    def set_score(self, value: float):
+    def success(self):
+        return self.adjust(+1)
+
+    def failure(self):
+        return self.adjust(-1)
+
+    def set_score(self, value):
+
         value = max(self.MIN_SCORE, min(self.MAX_SCORE, value))
+
         autonomy = self._map_autonomy(value)
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("""
-            INSERT INTO confidence_state (score, autonomy, updated_at)
-            VALUES (?, ?, ?)
-        """, (value, autonomy, datetime.utcnow()))
+            cursor = conn.cursor()
 
-        conn.commit()
-        conn.close()
+            cursor.execute(
+                """
+                UPDATE confidence_state
+                SET score=?, autonomy=?, updated_at=?
+                WHERE id=1
+                """,
+                (value, autonomy, datetime.utcnow())
+            )
+
+            conn.commit()
 
         return {
             "score": value,
             "autonomy": autonomy
         }
 
-    # ---------------------------------
-    # Quick Helpers
-    # ---------------------------------
     def get_score(self):
         return self.get_state()["score"]
 

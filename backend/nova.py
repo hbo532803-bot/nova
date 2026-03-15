@@ -6,16 +6,16 @@ from backend.intelligence.system_settings import get_setting
 from backend.budget_guard import check_budget
 from backend.system.permission_gate import permission_gate
 from backend.system.kill_switch import kill_switch
-from backend.database import get_connection
+from backend.database import get_db
 
 
 class Nova:
 
     def __init__(self):
+
         self.economic = EconomicController()
         self.confidence = ConfidenceEngine()
         self.roi_engine = ROIEngine()
-        self.conn = get_connection()
 
     # =========================================================
     # -------------------- STATUS DASHBOARD -------------------
@@ -23,24 +23,26 @@ class Nova:
 
     def status(self):
 
-        cursor = self.conn.cursor()
+        with get_db() as conn:
 
-        cursor.execute("SELECT COUNT(*) as total FROM economic_experiments")
-        total = cursor.fetchone()["total"]
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT SUM(revenue_generated) as revenue
-            FROM economic_experiments
-        """)
-        revenue_row = cursor.fetchone()
-        revenue = revenue_row["revenue"] if revenue_row["revenue"] else 0
+            cursor.execute("SELECT COUNT(*) as total FROM economic_experiments")
+            total = cursor.fetchone()["total"]
 
-        cursor.execute("""
-            SELECT SUM(cost_incurred) as cost
-            FROM economic_experiments
-        """)
-        cost_row = cursor.fetchone()
-        cost = cost_row["cost"] if cost_row["cost"] else 0
+            cursor.execute("""
+                SELECT SUM(revenue_generated) as revenue
+                FROM economic_experiments
+            """)
+            revenue_row = cursor.fetchone()
+            revenue = revenue_row["revenue"] if revenue_row["revenue"] else 0
+
+            cursor.execute("""
+                SELECT SUM(cost_incurred) as cost
+                FROM economic_experiments
+            """)
+            cost_row = cursor.fetchone()
+            cost = cost_row["cost"] if cost_row["cost"] else 0
 
         confidence_state = self.confidence.get_state()
 
@@ -58,15 +60,12 @@ class Nova:
 
     def run_cycle(self):
 
-        # 1️⃣ Kill switch check
         if kill_switch.is_triggered():
             return {"status": "SYSTEM_HALTED"}
 
-        # 2️⃣ Budget check
         if not check_budget():
             return {"status": "BUDGET_EXCEEDED"}
 
-        # 3️⃣ Run economic controller full loop
         result = self.economic.run_full_cycle()
 
         return {
@@ -92,7 +91,9 @@ class Nova:
     # =========================================================
 
     def approve_action(self, action: str, target: str):
+
         permission_gate.allow_once(action, target)
+
         return {"approved": True}
 
     # =========================================================
@@ -100,9 +101,13 @@ class Nova:
     # =========================================================
 
     def emergency_stop(self):
+
         kill_switch.trigger()
+
         return {"status": "EMERGENCY_STOP_ACTIVATED"}
 
     def reset_emergency(self):
+
         kill_switch.reset()
+
         return {"status": "SYSTEM_RESUMED"}

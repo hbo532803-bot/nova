@@ -1,69 +1,71 @@
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from typing import Dict
+import uuid
+from datetime import datetime, timedelta
 
 from backend.frontend_api.event_bus import broadcast
 from backend.frontend_api.events import log_event
 
 from backend.memory.goal_memory import remember, list_goals, primary_goal
+from backend.memory.reflection_memory import ReflectionMemory
+
 from backend.intelligence.ethics_gate import check
 from backend.intelligence.llm_engine import run_llm_reasoning
 from backend.intelligence.decision_router import route_decision
 from backend.intelligence.planning_brain import brain
 from backend.intelligence.confidence_engine import ConfidenceEngine
-from fastapi import HTTPException
 from backend.intelligence.self_analyzer import SelfAnalyzer
 from backend.intelligence.suggestion_executor import SuggestionExecutor
-from backend.system.permission_gate import permission_gate
 
-from backend.tools.diff_engine import apply_change
-from backend.tools.rollback_manager import rollback_last
-from backend.memory.reflection_memory import ReflectionMemory
-import uuid
-from fastapi import Depends
-from fastapi.security import OAuth2PasswordRequestForm
-from backend.auth import authenticate_user, create_access_token, get_current_admin
-from datetime import timedelta
-from backend.database import get_db
-from datetime import datetime
 from backend.intelligence.strategic_planner import StrategicPlanner
 from backend.intelligence.plan_executor import PlanExecutor
 from backend.intelligence.experiment_engine import EconomicEngine
 from backend.intelligence.blueprint_engine import BlueprintEngine
 from backend.intelligence.agent_orchestrator import AgentOrchestrator
 from backend.intelligence.economic_controller import EconomicController
-from backend.nova import Nova
-from fastapi import APIRouter, Depends
-from backend.auth import get_current_admin
+
 from backend.intelligence.market_engine.weekly_runner import MarketWeeklyRunner
-from fastapi import BackgroundTasks
+from backend.intelligence.market_engine.threshold_advisor import ThresholdAdvisor
+
+from backend.system.permission_gate import permission_gate
 from backend.system.kill_switch import kill_switch
-from backend.intelligence.agent_orchestrator import AgentOrchestrator
 
+from backend.tools.diff_engine import apply_change
+from backend.tools.rollback_manager import rollback_last
 
+from backend.auth import authenticate_user, create_access_token, get_current_admin
 
+from backend.database import get_db
+
+from backend.core.nova_core import nova_core
+from backend.nova import Nova
 
 router = APIRouter()
 
 STATE = {"status": "IDLE"}
 PENDING_DIFF = {}
 
-
-# -------------------------
+# -------------------------------------------------
 # Utility
-# -------------------------
+# -------------------------------------------------
 
 def reset_run_state():
     permission_gate.reset()
     PENDING_DIFF.clear()
 
 
-# -------------------------
-# Status
-# -------------------------
+# -------------------------------------------------
+# Reflection Recorder
+# -------------------------------------------------
 
 def record_cycle(goal, decision, outcome, success):
+
     try:
+
         reflection = ReflectionMemory()
+        engine = ConfidenceEngine()
+        score = engine.get_score()
 
         reflection.record_reflection({
             "cycle_id": str(uuid.uuid4()),
@@ -86,8 +88,8 @@ def record_cycle(goal, decision, outcome, success):
             "mistake_type": "" if success else outcome,
             "missed_simplification": "",
 
-            "confidence_before": ConfidenceEngine.score,
-            "confidence_after": ConfidenceEngine.score,
+            "confidence_before": score,
+            "confidence_after": score,
             "confidence_delta": 0,
 
             "system_stress_level": "normal",
@@ -100,11 +102,18 @@ def record_cycle(goal, decision, outcome, success):
             "improvement_suggestions": [],
             "pattern_tags": []
         })
+
     except Exception as e:
         print("Reflection failed:", e)
 
+
+# -------------------------------------------------
+# AUTH
+# -------------------------------------------------
+
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
+
     user = authenticate_user(form_data.username, form_data.password)
 
     if not user:
@@ -118,6 +127,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+# -------------------------------------------------
+# STATUS
+# -------------------------------------------------
+
 @router.get("/api/status")
 def get_status():
 
@@ -128,18 +141,66 @@ def get_status():
         "confidence": engine.get_score()
     }
 
-# -------------------------
-# Memory
-# -------------------------
+
+# -------------------------------------------------
+# SYSTEM HEALTH
+# -------------------------------------------------
+
+@router.get("/system/health")
+def system_health():
+
+    engine = ConfidenceEngine()
+
+    return {
+        "status": "healthy",
+        "confidence": engine.get_score(),
+        "kill_switch": kill_switch.is_triggered(),
+        "timestamp": datetime.utcnow()
+    }
+
+@router.get("/api/system/self-analysis")
+def system_self_analysis(admin=Depends(get_current_admin)):
+
+    analyzer = SelfAnalyzer()
+    return analyzer.generate_system_report()
+
+
+# -------------------------------------------------
+# SYSTEM PAUSE
+# -------------------------------------------------
+
+@router.post("/system/pause")
+def pause_system(admin=Depends(get_current_admin)):
+
+    kill_switch.trigger()
+
+    return {"status": "paused"}
+
+
+# -------------------------------------------------
+# SYSTEM RESUME
+# -------------------------------------------------
+
+@router.post("/system/resume")
+def resume_system(admin=Depends(get_current_admin)):
+
+    kill_switch.reset()
+
+    return {"status": "running"}
+
+
+# -------------------------------------------------
+# MEMORY
+# -------------------------------------------------
 
 @router.get("/memory/goals")
 def get_goals():
     return list_goals()
 
 
-# -------------------------
-# Run
-# -------------------------
+# -------------------------------------------------
+# RUN
+# -------------------------------------------------
 
 @router.post("/run")
 def run(request: dict, admin=Depends(get_current_admin)):
@@ -155,50 +216,25 @@ def run(request: dict, admin=Depends(get_current_admin)):
         "message": "Run requested"
     })
 
-    # ----------------------------
-    # STRATEGIC PLANNING
-    # ----------------------------
-
-    planner = StrategicPlanner()
-    executor = PlanExecutor()
-
-    broadcast({
-        "type": "log",
-        "level": "think",
-        "message": "Starting strategic decomposition"
-    })
-
-    plan = planner.decompose_goal(goal)
+    result = nova_core.handle_command(goal)
 
     broadcast({
         "type": "log",
         "level": "info",
-        "message": "Plan created. Executing steps"
+        "message": "NovaCore execution finished"
     })
 
-    executor.execute_plan(goal, plan)
-
-    broadcast({
-        "type": "log",
-        "level": "info",
-        "message": "Run finished"
-    })
-
-    return {
-        "status": "completed",
-        "steps": plan.get("steps", [])
-    }
+    return result
 
 
-
-# -------------------------
-# Rollback
-# -------------------------
+# -------------------------------------------------
+# ROLLBACK
+# -------------------------------------------------
 
 @router.post("/rollback/last")
 def rollback(path: str, admin=Depends(get_current_admin)):
 
-    result = rollback_last(path)
+    rollback_last(path)
 
     broadcast({
         "type": "log",
@@ -206,83 +242,26 @@ def rollback(path: str, admin=Depends(get_current_admin)):
         "message": f"Rollback performed on {path}"
     })
 
-    ConfidenceEngine.failure()
-
     return {"ok": True}
-@router.get("/system/stats")
-def system_stats(admin=Depends(get_current_admin)):
-
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        # API usage
-        cursor.execute(
-            "SELECT calls, tokens FROM api_usage WHERE date = ?",
-            (today,)
-        )
-        usage = cursor.fetchone()
-
-        calls = usage[0] if usage else 0
-        tokens = usage[1] if usage else 0
-
-        # Reflection count
-        cursor.execute("SELECT COUNT(*) FROM reflections")
-        reflection_count = cursor.fetchone()[0]
-
-        # Confidence
-        cursor.execute("SELECT score, autonomy FROM confidence_state WHERE id=1")
-        conf = cursor.fetchone()
-        confidence_score = conf[0] if conf else 0
-        autonomy = conf[1] if conf else "UNKNOWN"
-
-    return {
-        "api_calls_today": calls,
-        "tokens_today": tokens,
-        "reflection_entries": reflection_count,
-        "confidence_score": confidence_score,
-        "autonomy_mode": autonomy
-    }
 
 
-@router.get("/system/self-analysis")
-def system_self_analysis(admin=Depends(get_current_admin)):
-    analyzer = SelfAnalyzer()
-    return analyzer.generate_system_report()
-
-
-@router.post("/system/apply-suggestions")
-def apply_suggestions(request: dict, admin=Depends(get_current_admin)):
-
-    suggestions = request.get("suggestions", [])
-
-    if not suggestions:
-        return {"status": "no_suggestions_provided"}
-
-
-
-    executor = SuggestionExecutor()
-    applied = executor.apply_suggestions(suggestions)
-
-    return {
-        "status": "applied",
-        "applied_actions": applied
-    }
+# -------------------------------------------------
+# ECONOMIC
+# -------------------------------------------------
 
 @router.get("/economic/run")
 def run_economic_cycle(admin=Depends(get_current_admin)):
 
     engine = EconomicEngine()
-    result = engine.run_cycle()
+    return engine.run_cycle()
 
-    return result
 
 @router.get("/economic/blueprint")
 def generate_blueprint(admin=Depends(get_current_admin)):
 
     engine = BlueprintEngine()
     return engine.run_cycle()
+
 
 @router.post("/economic/orchestrate")
 def run_orchestrator(data: dict, admin=Depends(get_current_admin)):
@@ -295,121 +274,23 @@ def run_orchestrator(data: dict, admin=Depends(get_current_admin)):
     orchestrator = AgentOrchestrator()
     return orchestrator.orchestrate(idea)
 
-#@router.post("/economic/full-cycle")
-#def run_full_cycle(admin=Depends(get_current_admin)):
 
- #   controller = EconomicController()
-  #  return controller.run_full_cycle()
-
-@router.post("/economic/advance/{experiment_id}")
-def advance_experiment(experiment_id: int):
-    controller = EconomicController()
-    return controller.advance_lifecycle(experiment_id)
-
-
-
-
-@router.post("/economic/validate/{experiment_id}")
-def validate_experiment(experiment_id: int, score: float):
-    controller = EconomicController()
-    return controller.update_validation(experiment_id, score)
-
-
-@router.post("/economic/evaluate/{experiment_id}")
-def evaluate_experiment(experiment_id: int):
-    controller = EconomicController()
-    return controller.evaluate_progress(experiment_id)
-
-
-@router.post("/economic/revenue/{experiment_id}")
-def add_revenue(experiment_id: int, revenue: float):
-    controller = EconomicController()
-    return controller.update_revenue(experiment_id, revenue)
-
-
-
-@router.post("/economic/reward-agent/")
-def reward_agent(agent_name: str, revenue: float):
-    controller = EconomicController()
-    return controller.reward_agents(agent_name, revenue)
-
-@router.get("/market/proposals")
-def get_market_proposals(admin=Depends(get_current_admin)):
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, niche_name, cash_score, proposed_budget, status
-            FROM market_proposals
-            ORDER BY cash_score DESC
-        """)
-        rows = cursor.fetchall()
-
-    return [dict(row) for row in rows]
-
-@router.post("/market/proposal/{proposal_id}/approve")
-def approve_proposal(proposal_id: int, admin=Depends(get_current_admin)):
-
-    from backend.intelligence.economic_controller import EconomicController
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT niche_name, proposed_budget
-            FROM market_proposals
-            WHERE id = ?
-        """, (proposal_id,))
-        row = cursor.fetchone()
-
-        if not row:
-            return {"error": "Proposal not found"}
-
-        niche, budget = row
-
-        # Mark approved
-        cursor.execute("""
-            UPDATE market_proposals
-            SET status = 'APPROVED'
-            WHERE id = ?
-        """, (proposal_id,))
-
-        conn.commit()
-
-    # Spawn controlled experiment
-    controller = EconomicController()
-    controller.create_experiment_from_market(niche, budget)
-
-    return {"status": "approved", "niche": niche}
-
-@router.post("/market/proposal/{proposal_id}/reject")
-def reject_proposal(proposal_id: int, admin=Depends(get_current_admin)):
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE market_proposals
-            SET status = 'REJECTED'
-            WHERE id = ?
-        """, (proposal_id,))
-
-        conn.commit()
-
-    return {"status": "rejected"}
-
+# -------------------------------------------------
+# MARKET
+# -------------------------------------------------
 
 @router.post("/market/run-weekly")
-def run_weekly_market_scan(
-    background_tasks: BackgroundTasks,
-    admin=Depends(get_current_admin)
-):
-    runner = MarketWeeklyRunner()
+def run_weekly_market_scan(background_tasks: BackgroundTasks, admin=Depends(get_current_admin)):
 
-    # Background me run karega (UI block nahi hoga)
+    runner = MarketWeeklyRunner()
     background_tasks.add_task(runner.run_full_weekly_cycle)
 
     return {"status": "started"}
+
+
+# -------------------------------------------------
+# NOVA DASHBOARD
+# -------------------------------------------------
 
 @router.get("/nova/dashboard")
 def nova_dashboard(admin=Depends(get_current_admin)):
@@ -417,89 +298,105 @@ def nova_dashboard(admin=Depends(get_current_admin)):
     nova = Nova()
     system_status = nova.status()
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-
     with get_db() as conn:
+
         cursor = conn.cursor()
 
-        # Experiments
         cursor.execute("SELECT * FROM economic_experiments")
         experiments = [dict(row) for row in cursor.fetchall()]
 
-        # Agents
         cursor.execute("SELECT * FROM agents")
         agents = [dict(row) for row in cursor.fetchall()]
-
-        # API usage
-        cursor.execute(
-            "SELECT calls, tokens FROM api_usage WHERE date = ?",
-            (today,)
-        )
-        usage = cursor.fetchone()
-        api_calls = usage[0] if usage else 0
-        token_usage = usage[1] if usage else 0
-
-        # Reflection count
-        cursor.execute("SELECT COUNT(*) FROM reflections")
-        reflection_count = cursor.fetchone()[0]
-
-        # Experiment stats
-        cursor.execute("SELECT COUNT(*) FROM economic_experiments WHERE status='FAILED'")
-        failed_count = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) FROM economic_experiments WHERE status='SCALING'")
-        scaling_count = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) FROM economic_experiments WHERE status NOT IN ('FAILED','ARCHIVED')")
-        active_count = cursor.fetchone()[0]
-
-   
 
     return {
         "system": system_status,
         "experiments": experiments,
-        "agents": agents,
-        "risk": {
-            "api_calls_today": api_calls,
-            "tokens_today": token_usage,
-            "reflection_entries": reflection_count,
-            "failed_experiments": failed_count,
-            "scaling_experiments": scaling_count,
-            "active_experiments": active_count,
-            "emergency_active": kill_switch.is_triggered()
-        }
+        "agents": agents
     }
 
 
-# =====================================================
-# EXPERIMENT INTELLIGENCE SUGGESTIONS
-# =====================================================
-
-@router.get("/experiments/suggestions")
-def experiment_suggestions(admin=Depends(get_current_admin)):
-
-    from backend.intelligence.experiment_brain import ExperimentBrain
-
-    brain = ExperimentBrain()
-    result = brain.analyze_experiments()
-
-    return result
-
+# -------------------------------------------------
+# FULL NOVA CYCLE
+# -------------------------------------------------
 
 @router.post("/nova/run-full-cycle")
 def run_full_cycle(admin=Depends(get_current_admin)):
 
-    
-
     orchestrator = AgentOrchestrator()
-    result = orchestrator.run_full_system_cycle()
+    return orchestrator.run_full_system_cycle()
 
-    return result
 
-@router.get("/market/threshold-advice")
-def threshold_advice(admin=Depends(get_current_admin)):
 
-    from backend.intelligence.market_engine.threshold_advisor import ThresholdAdvisor
+@router.post("/nova/opportunity/{id}/execute")
+def execute_opportunity(id:int):
 
-    advisor = ThresholdAdvisor()
-    return advisor.analyze()
+    return {"status":"execution_started","id":id}    
+
+@router.post("/nova/opportunity/discover")
+def discover():
+
+    # run opportunity scanner
+
+    return {"status":"scan_started"}  
+
+@router.get("/nova/agents")
+def get_agents():
+
+    return [
+        {
+            "id":1,
+            "name":"Agent Alpha",
+            "status":"running"
+        },
+        {
+            "id":2,
+            "name":"Agent Beta",
+            "status":"idle"
+        }
+    ]  
+
+@router.get("/nova/opportunities")
+def get_opportunities():
+
+    return [
+        {
+            "id": 1,
+            "title": "Market Arbitrage",
+            "description": "Price difference detected between exchanges"
+        },
+        {
+            "id": 2,
+            "title": "Automation Opportunity",
+            "description": "Process automation detected"
+        }
+    ]
+
+
+@router.get("/nova/execution")
+def get_execution_pipeline():
+
+    return [
+        {
+            "id": 1,
+            "name": "Opportunity Execution",
+            "status": "running"
+        },
+        {
+            "id": 2,
+            "name": "Experiment Task",
+            "status": "pending"
+        }
+    ]   
+
+
+@router.get("/nova/logs")
+def get_logs():
+
+    return [
+        {
+            "message": "Nova system started"
+        },
+        {
+            "message": "Agent Alpha executed task"
+        }
+    ]     

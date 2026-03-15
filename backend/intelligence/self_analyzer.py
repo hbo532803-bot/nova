@@ -1,57 +1,100 @@
-from backend.database import get_connection
-from backend.intelligence.system_settings import get_setting
+from backend.database import get_db
 
 
-class SystemSelfAnalyzer:
+class SelfAnalyzer:
+
+    """
+    Nova Self Analyzer
+    """
 
     def generate_system_report(self):
 
         return {
-            "goals_stats": self._get_goal_stats(),
             "confidence_level": self._get_confidence(),
-            "system_configuration": {
-                "semantic_threshold": get_setting("semantic_threshold", "0.75"),
-                "reasoning_depth": get_setting("reasoning_depth", "1"),
-                "recursive_planning": get_setting("recursive_planning", "disabled")
-            }
+            "experiment_stats": self._get_experiment_stats(),
+            "agent_stats": self._get_agent_stats(),
+            "reflection_count": self._get_reflection_count()
         }
 
-    def _get_goal_stats(self):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) as total FROM goals")
-        total = cursor.fetchone()["total"]
-
-        cursor.execute("SELECT COUNT(DISTINCT goal) as unique_goals FROM goals")
-        unique_goals = cursor.fetchone()["unique_goals"]
-
-        conn.close()
-
-        return {
-            "total_goals": total,
-            "unique_goals": unique_goals
-        }
+    # -------------------------------
+    # CONFIDENCE
+    # -------------------------------
 
     def _get_confidence(self):
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        cursor.execute(
-            "SELECT score, autonomy FROM confidence_state ORDER BY id DESC LIMIT 1"
-        )
-        row = cursor.fetchone()
+        with get_db() as conn:
 
-        conn.close()
+            cursor = conn.cursor()
 
-        if row:
+            cursor.execute(
+                "SELECT score, autonomy FROM confidence_state ORDER BY id DESC LIMIT 1"
+            )
+
+            row = cursor.fetchone()
+
+            if not row:
+                return {"score": 0, "autonomy": "UNKNOWN"}
+
             return {
                 "score": row["score"],
                 "autonomy": row["autonomy"]
             }
 
-        return {
-            "score": 50,
-            "autonomy": "LIMITED"
-        }
-SelfAnalyzer = SystemSelfAnalyzer
+    # -------------------------------
+    # EXPERIMENT STATS
+    # -------------------------------
+
+    def _get_experiment_stats(self):
+
+        with get_db() as conn:
+
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) AS c FROM economic_experiments")
+            total = cursor.fetchone()["c"]
+
+            cursor.execute(
+                "SELECT COUNT(*) AS c FROM economic_experiments WHERE status='FAILED'"
+            )
+            failed = cursor.fetchone()["c"]
+
+            cursor.execute(
+                "SELECT COUNT(*) AS c FROM economic_experiments WHERE status='SCALING'"
+            )
+            scaling = cursor.fetchone()["c"]
+
+            return {
+                "total_experiments": total,
+                "failed_experiments": failed,
+                "scaling_experiments": scaling
+            }
+
+    # -------------------------------
+    # AGENTS
+    # -------------------------------
+
+    def _get_agent_stats(self):
+
+        with get_db() as conn:
+
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) AS c FROM agents")
+
+            total = cursor.fetchone()["c"]
+
+            return {"total_agents": total}
+
+    # -------------------------------
+    # REFLECTION COUNT
+    # -------------------------------
+
+    def _get_reflection_count(self):
+
+        with get_db() as conn:
+
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) AS c FROM reflections")
+
+            return cursor.fetchone()["c"]

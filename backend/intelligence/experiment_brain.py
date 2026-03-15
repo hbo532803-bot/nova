@@ -1,8 +1,6 @@
 import sqlite3
 from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "nova.db"
+from backend.database import get_db
 
 
 class ExperimentBrain:
@@ -12,8 +10,8 @@ class ExperimentBrain:
 
     def analyze_experiments(self):
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        with get_db() as conn:
+         cursor = conn.cursor()
 
         cursor.execute("""
             SELECT id, name, revenue, cost, status
@@ -72,7 +70,7 @@ class ExperimentBrain:
                     "cycles": cycle_count
                 })
 
-        conn.close()
+        
 
         print("🧠 Experiment analysis complete")
         return suggestions

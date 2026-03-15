@@ -1,11 +1,11 @@
 # backend/migrations/economic_upgrade.py
 
-from backend.database import get_connection
+from backend.database import get_db
 
 
 def upgrade_economic_schema():
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_db() as conn:
+     cursor = conn.cursor()
 
     # Add new columns safely
     columns = {
@@ -26,4 +26,4 @@ def upgrade_economic_schema():
             pass  # Column may already exist
 
     conn.commit()
-    conn.close()
+ 

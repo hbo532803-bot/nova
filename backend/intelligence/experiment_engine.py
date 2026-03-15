@@ -1,7 +1,7 @@
 import json
 import re
 from backend.llm import think
-from backend.database import get_connection
+from backend.database import get_db
 
 
 class EconomicEngine:
@@ -108,7 +108,7 @@ Format:
     # -------------------------
     def store_experiment(self, experiment):
 
-        conn = get_connection()
+      with get_db() as conn:
         cursor = conn.cursor()
 
         cursor.execute("""

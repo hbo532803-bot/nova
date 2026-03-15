@@ -1,27 +1,37 @@
 import threading
+from datetime import datetime
 
 from backend.agents.supervisor import SupervisorAgent
 from backend.frontend_api.event_bus import broadcast
-from backend.db_init import get_connection
+from backend.database import get_db
 
 
 class NovaCore:
     """
     Central decision brain of Nova.
-    All commands (user or autonomous) should go through this class.
+    All commands (user or autonomous) must pass here.
     """
 
     def __init__(self):
+
         self.supervisor = SupervisorAgent()
+
+        # Prevent concurrent execution collisions
         self._lock = threading.Lock()
 
-    # ==========================
+        # Nova runtime state
+        self.last_command = None
+        self.last_result = None
+
+    # ====================================
     # PUBLIC ENTRYPOINT
-    # ==========================
+    # ====================================
 
     def handle_command(self, command: str):
 
         with self._lock:
+
+            self.last_command = command
 
             broadcast({
                 "type": "log",
@@ -33,13 +43,15 @@ class NovaCore:
 
             result = self._execute(plan)
 
+            self.last_result = result
+
             self._log_decision(plan, result)
 
             return result
 
-    # ==========================
+    # ====================================
     # PLAN CREATION
-    # ==========================
+    # ====================================
 
     def _create_plan(self, command: str):
 
@@ -47,34 +59,54 @@ class NovaCore:
             "goal": command,
             "steps": [],
             "autonomy_level": "LIMITED_AUTONOMY",
-            "_permission_context": "nova_core"
+            "_permission_context": "nova_core",
+            "created_at": datetime.utcnow().isoformat()
         }
 
-        if "analyze" in command:
+        cmd = command.lower()
+
+        if "analyze" in cmd:
+
             plan["steps"] = ["analyze"]
 
-        elif "optimize" in command:
+        elif "optimize" in cmd:
+
             plan["steps"] = ["analyze", "execute"]
 
+        elif "market" in cmd:
+
+            plan["steps"] = ["market_scan"]
+
+        elif "experiment" in cmd:
+
+            plan["steps"] = ["experiment"]
+
         else:
+
             plan["steps"] = ["execute"]
 
         return plan
 
-    # ==========================
+    # ====================================
     # EXECUTION
-    # ==========================
+    # ====================================
 
     def _execute(self, plan):
 
         try:
+
+            broadcast({
+                "type": "log",
+                "level": "think",
+                "message": "Supervisor executing plan"
+            })
 
             result = self.supervisor.handle(plan)
 
             broadcast({
                 "type": "log",
                 "level": "info",
-                "message": "Plan executed via Supervisor"
+                "message": "Plan executed successfully"
             })
 
             return result
@@ -92,27 +124,28 @@ class NovaCore:
                 "error": str(e)
             }
 
-    # ==========================
+    # ====================================
     # DECISION MEMORY
-    # ==========================
+    # ====================================
 
     def _log_decision(self, plan, result):
 
         try:
 
-            conn = get_connection()
-            cursor = conn.cursor()
+            with get_db() as conn:
+             cursor = conn.cursor()
 
-            cursor.execute(
+             cursor.execute(
                 """
                 INSERT INTO decision_memory
-                (decision_type, context_snapshot, actual_outcome)
-                VALUES (?, ?, ?)
+                (decision_type, context_snapshot, actual_outcome, created_at)
+                VALUES (?, ?, ?, ?)
                 """,
                 (
                     "nova_core",
                     str(plan),
-                    str(result)
+                    str(result),
+                    datetime.utcnow().isoformat()
                 )
             )
 
@@ -128,5 +161,5 @@ class NovaCore:
             })
 
 
-# Global instance
+# Global singleton
 nova_core = NovaCore()

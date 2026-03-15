@@ -1,0 +1,31 @@
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #111827;
+  --bg-panel: #1f2937;
+
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+
+  --accent: #3b82f6;
+  --danger: #ef4444;
+  --success: #10b981;
+
+  --border: #374151;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
