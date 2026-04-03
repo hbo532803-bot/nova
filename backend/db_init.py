@@ -21,6 +21,7 @@ def _schema_present(cursor) -> bool:
 
 def initialize_all_tables(reset: bool = False):
     global _db_initialized, _db_init_logged
+    global _db_initialized
 
     with _db_init_lock:
         if _db_initialized and not reset:
@@ -376,6 +377,7 @@ def initialize_all_tables(reset: bool = False):
         if not _db_init_logged:
             print("DB FULLY INITIALIZED")
             _db_init_logged = True
+        print("DB FULLY INITIALIZED")
         return True
 
 
