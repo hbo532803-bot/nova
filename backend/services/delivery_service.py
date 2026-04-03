@@ -13,7 +13,13 @@ class DeliveryService:
     def __init__(self):
         self.deployment_router = DeploymentRouter()
 
-    def build_final_result(self, aggregated: dict[str, Any], *, type_hint: str | None = None) -> dict[str, Any]:
+    def build_final_result(
+        self,
+        aggregated: dict[str, Any],
+        *,
+        type_hint: str | None = None,
+        deploy: bool = True,
+    ) -> dict[str, Any]:
         task_outputs = aggregated.get("task_outputs") or []
         kind = self._detect_type(type_hint, task_outputs)
 
@@ -27,7 +33,8 @@ class DeliveryService:
                 "task_count": len(task_outputs),
             },
         }
-        final_result["deployment"] = self.deployment_router.deploy(final_result)
+        if deploy:
+            final_result["deployment"] = self.deployment_router.deploy(final_result)
         return final_result
 
     def _detect_type(self, type_hint: str | None, task_outputs: list[dict[str, Any]]) -> str:

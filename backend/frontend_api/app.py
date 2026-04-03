@@ -10,7 +10,6 @@ from backend.frontend_api import event_bus
 from backend.autonomy.auto_scheduler import AutoScheduler
 from backend.intelligence.economic_controller import EconomicController
 
-from backend.database import get_db
 from backend.db_init import initialize_all_tables
 from backend.auth import verify_admin_token
 from backend.system.observability import set_actor, set_request_id
@@ -135,10 +134,10 @@ async def startup():
     # DATABASE
     # -------------------------
 
-    # Ensure schema exists (idempotent).
-    initialize_all_tables(reset=False)
-    with get_db() as conn:
-        _ = conn.cursor()
+    # Ensure schema exists once per process.
+    did_initialize = initialize_all_tables(reset=False)
+    if did_initialize:
+        print("✅ DB schema initialized at startup")
 
     # -------------------------
     # EVENT BUS
