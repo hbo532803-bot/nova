@@ -280,7 +280,7 @@ def order_result(id: str, admin=Depends(get_current_admin)):
     if not mission_id:
         # id may already be a mission_id
         aggregated = _result_collector.collect_outputs(mission_id=id)
-    return _delivery_service.build_final_result(aggregated)
+    return _delivery_service.build_final_result(aggregated, deploy=False)
 
 
 # -------------------------------------------------
