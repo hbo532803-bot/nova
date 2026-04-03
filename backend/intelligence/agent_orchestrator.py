@@ -3,7 +3,6 @@ import re
 
 from backend.llm import think
 from backend.database import get_db
-from backend.db_init import initialize_all_tables
 from backend.db_retry import run_db_write_with_retry
 
 from backend.intelligence.market_engine.weekly_runner import MarketWeeklyRunner
@@ -35,7 +34,7 @@ class AgentOrchestrator:
 
     def _ensure_tables(self):
         # Schema is owned by db_init; keep legacy call sites stable.
-        initialize_all_tables(reset=False)
+        return None
 
     # -------------------------------------------------
     # REGISTER DEFAULT AGENTS

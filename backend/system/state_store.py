@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from backend.database import get_db
-from backend.db_init import initialize_all_tables
 from backend.db_retry import run_db_write_with_retry
 
 NovaState = Literal[
@@ -36,7 +35,7 @@ class StateStore:
     KEY = "nova_system_state"
 
     def ensure(self) -> None:
-        initialize_all_tables(reset=False)
+        return None
 
     def get(self) -> StateSnapshot:
         self.ensure()
