@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import datetime
 from typing import Any, Dict, List, Optional
 
@@ -102,7 +103,7 @@ class OpportunityEngine:
                 try:
                     conn.rollback()
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in opportunity_engine.py")
                 return {"proposal_id": proposal_id, "success": False, "error": str(e)}
 
         # Knowledge graph linking remains best-effort and non-blocking.
@@ -112,7 +113,7 @@ class OpportunityEngine:
                 self.kg.upsert_node("experiment", str(result.get("experiment") or niche), {"name": niche})
                 self.kg.add_edge("opportunity", str(proposal_id), "LAUNCHED_EXPERIMENT", "experiment", str(niche))
             except Exception:
-                pass
+                logging.getLogger(__name__).exception("Suppressed exception in opportunity_engine.py")
 
         return {"proposal_id": proposal_id, "experiment": result}
 

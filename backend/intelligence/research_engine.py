@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import datetime
 import re
 import json
@@ -70,7 +71,7 @@ class ResearchEngine:
                 )
                 conn.commit()
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in research_engine.py")
 
         broadcast({"type": "log", "level": "info", "message": f"ResearchEngine stored {len(stored)} proposals"})
         return payload
@@ -228,7 +229,7 @@ class ResearchEngine:
                 self.kg.upsert_node("opportunity", str(s["id"]), s)
                 self.kg.add_edge("strategy", "current", "DISCOVERED", "opportunity", str(s["id"]))
             except Exception:
-                pass
+                logging.getLogger(__name__).exception("Suppressed exception in research_engine.py")
 
         return stored
 
