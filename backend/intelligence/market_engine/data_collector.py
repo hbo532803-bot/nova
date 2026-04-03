@@ -6,6 +6,8 @@ import time
 from pytrends.request import TrendReq
 
 from backend.database import get_db
+from backend.db_init import initialize_all_tables
+from backend.db_retry import run_db_write_with_retry
 
 
 class MarketDataCollector:
@@ -32,58 +34,40 @@ class MarketDataCollector:
     # -------------------------------------------------
 
     def ensure_table(self):
-
-        with get_db() as conn:
-
-            cursor = conn.cursor()
-
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS market_signals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                niche_name TEXT,
-                source TEXT,
-                signal_type TEXT,
-                value REAL,
-                week_tag TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-
-            cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_market_week
-            ON market_signals(week_tag)
-            """)
-
-            conn.commit()
+        # Schema is owned by db_init; keep this for legacy call sites.
+        initialize_all_tables(reset=False)
 
     # -------------------------------------------------
     # STORE SIGNAL
     # -------------------------------------------------
 
     def store_signal(self, niche, source, signal_type, value):
-
-        with get_db() as conn:
-
+        def _write(conn):
             cursor = conn.cursor()
-
-            cursor.execute("""
-            SELECT id FROM market_signals
-            WHERE niche_name=?
-            AND source=?
-            AND signal_type=?
-            AND week_tag=?
-            """, (niche, source, signal_type, self.week_tag))
-
+            cursor.execute(
+                """
+                SELECT id FROM market_signals
+                WHERE niche_name=?
+                AND source=?
+                AND signal_type=?
+                AND week_tag=?
+                """,
+                (niche, source, signal_type, self.week_tag),
+            )
             if cursor.fetchone():
-                return
-
-            cursor.execute("""
-            INSERT INTO market_signals
-            (niche_name,source,signal_type,value,week_tag)
-            VALUES (?,?,?,?,?)
-            """, (niche, source, signal_type, value, self.week_tag))
-
+                return None
+            cursor.execute(
+                """
+                INSERT INTO market_signals
+                (niche_name,source,signal_type,value,week_tag)
+                VALUES (?,?,?,?,?)
+                """,
+                (niche, source, signal_type, value, self.week_tag),
+            )
             conn.commit()
+            return None
+
+        run_db_write_with_retry("market_signals.upsert", _write)
 
     # -------------------------------------------------
     # UPWORK SIGNAL

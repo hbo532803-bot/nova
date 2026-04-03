@@ -1,4 +1,5 @@
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 
 class ToolSandbox:
@@ -12,12 +13,14 @@ class ToolSandbox:
     def run(self, tool_fn, *args, **kwargs):
         start = time.time()
         try:
-            result = tool_fn(*args, **kwargs)
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(tool_fn, *args, **kwargs)
+                result = fut.result(timeout=self.timeout_sec)
+        except FuturesTimeoutError:
+            raise RuntimeError("Tool timeout exceeded")
         except Exception as e:
             raise RuntimeError(f"Tool crashed: {e}")
-
-        duration = time.time() - start
-        if duration > self.timeout_sec:
-            raise RuntimeError("Tool timeout exceeded")
+        finally:
+            _ = time.time() - start
 
         return result

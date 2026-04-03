@@ -23,6 +23,9 @@ class AgentVotingSystem:
         "execution": 0.10
     }
 
+    SCORE_WEIGHT = 0.7
+    TRUST_WEIGHT = 0.3
+
     # --------------------------------------
     # COLLECT VOTES
     # --------------------------------------

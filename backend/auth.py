@@ -10,14 +10,20 @@ from fastapi.security import OAuth2PasswordBearer
 # CONFIG
 # =========================
 
-SECRET_KEY = os.getenv("NOVA_SECRET_KEY", "dev-secret-change-this")
+SECRET_KEY = os.getenv("NOVA_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("NOVA_SECRET_KEY environment variable is required for authentication")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
 
-ADMIN_USERNAME = os.getenv("NOVA_ADMIN_USER", "admin")
-ADMIN_PASSWORD = os.getenv("NOVA_ADMIN_PASS", "admin123")
+ADMIN_USERNAME = os.getenv("NOVA_ADMIN_USER")
+ADMIN_PASSWORD = os.getenv("NOVA_ADMIN_PASS")
+
+if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+    raise RuntimeError("NOVA_ADMIN_USER and NOVA_ADMIN_PASS must be set for admin authentication")
 
 
 # =========================
@@ -59,14 +65,21 @@ def get_current_admin(token: str = Depends(oauth2_scheme)):
     )
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        role: str = payload.get("role")
-
-        if username is None or role != "admin":
-            raise credentials_exception
-
-    except JWTError:
+        return verify_admin_token(token)
+    except Exception:
         raise credentials_exception
+
+
+def verify_admin_token(token: str):
+    """
+    Shared verifier for HTTP and WebSocket authentication.
+    Raises on invalid token.
+    """
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    username: str = payload.get("sub")
+    role: str = payload.get("role")
+
+    if username is None or role != "admin":
+        raise RuntimeError("invalid_role")
 
     return {"username": username, "role": role}

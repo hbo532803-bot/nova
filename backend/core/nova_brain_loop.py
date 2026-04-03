@@ -1,11 +1,14 @@
 import datetime
 
-from backend.core.nova_core import nova_core
+from backend.core.nova_core import get_nova_core
 from backend.intelligence.confidence_engine import ConfidenceEngine
-from backend.intelligence.economic_attack_engine import EconomicAttackEngine
 from backend.frontend_api.event_bus import broadcast
 from backend.database import get_db
 from backend.intelligence.self_improvement_engine import SelfImprovementEngine
+from backend.memory.reflection_memory import ReflectionMemory
+from backend.runtime.command_queue import CommandQueue
+from backend.system.state_store import StateStore
+from backend.core.cognitive_cycle import CognitiveCycle
 
 class NovaBrainLoop:
     """
@@ -22,8 +25,12 @@ class NovaBrainLoop:
     def __init__(self):
 
         self.confidence = ConfidenceEngine()
-        self.economic_engine = EconomicAttackEngine()
+        # Economic engine is executed via NovaCore/ExecutionEngine, never directly.
         self.self_improvement = SelfImprovementEngine()
+        self.reflection = ReflectionMemory()
+        self.commands = CommandQueue()
+        self.state = StateStore()
+        self.cognitive = CognitiveCycle()
 
     # -------------------------------------------------
     # MAIN CYCLE
@@ -33,6 +40,7 @@ class NovaBrainLoop:
 
         state = self.confidence.get_state()
         learning = self.self_improvement.run_cycle()
+        self.state.ensure()
 
         broadcast({
             "type": "log",
@@ -40,17 +48,34 @@ class NovaBrainLoop:
             "message": f"Nova brain cycle started (confidence={state['score']})"
         })
 
+        # 0️⃣ Command queue has priority (control console pipeline)
+        pending = self.commands.fetch_pending()
+        if pending:
+            cmd = pending[0]
+            cmd_id = cmd["id"]
+            cmd_text = cmd["command_text"]
+
+            core = get_nova_core()
+            core.handle_command("__STATE__:PLANNING")
+            self.commands.update_status(cmd_id, "RUNNING")
+
+            core.handle_command("__STATE__:EXECUTING")
+            result = core.handle_command(cmd_text)
+
+            core.handle_command("__STATE__:LEARNING")
+            self._record_reflection(cmd_text, state, result)
+            self._learn(result)
+
+            self.commands.update_status(cmd_id, "COMPLETED" if result.get("success") else "FAILED", result=str(result))
+            core.handle_command("__STATE__:IDLE")
+
+            return {"command_id": cmd_id, "command": cmd_text, "result": result, "learning": learning}
+
         # -------------------------------
         # 1️⃣ Observe system
         # -------------------------------
-
-        observation = self._observe()
-
-        # -------------------------------
-        # 2️⃣ Decide strategy
-        # -------------------------------
-
-        action = self._decide_action(state, observation)
+        cognitive = self.cognitive.run(goal_hint="autonomous mission")
+        action = f"run mission autonomous mission"
 
         broadcast({
             "type": "log",
@@ -59,30 +84,33 @@ class NovaBrainLoop:
         })
 
         # -------------------------------
-        # 3️⃣ Execute via NovaCore
+        # 3️⃣ Execute via NovaCore (NO BYPASS)
         # -------------------------------
 
-        strategy_result = nova_core.handle_command(action)
+        # State transitions must be controlled by NovaBrainLoop
+        core = get_nova_core()
+        if "market" in action:
+            core.handle_command("__STATE__:SCANNING_MARKET")
+        else:
+            core.handle_command("__STATE__:PLANNING")
+
+        core.handle_command("__STATE__:EXECUTING")
+        result = core.handle_command(action)
+        core.handle_command("__STATE__:LEARNING")
 
         # -------------------------------
-        # 4️⃣ Run economic engine
+        # 4️⃣ Reflection learning (store results)
         # -------------------------------
 
-        economic_result = self.economic_engine.run_cycle()
+        self._record_reflection(action, state, result)
+        self._learn(result)
 
-        # -------------------------------
-        # 5️⃣ Learning
-        # -------------------------------
-
-        self._learn(strategy_result)
+        core.handle_command("__STATE__:IDLE")
 
         return {
-            "strategy": strategy_result,
-            "economy": economic_result,
-            "strategy": strategy_result,
-            "economy": economic_result,
-             "learning": learning
-
+            "action": action,
+            "result": result,
+            "learning": learning,
         }
 
     # -------------------------------------------------
@@ -117,6 +145,44 @@ class NovaBrainLoop:
             "pending_proposals": pending_proposals
         }
 
+    def _should_run_daily_market_scan(self) -> bool:
+        """
+        Guardrails: market scan interval = 24 hours.
+        Store last scan timestamp in system_settings to avoid file-based state.
+        """
+        now = datetime.datetime.utcnow()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT value FROM system_settings WHERE key = ?",
+                ("last_market_scan_utc",),
+            )
+            row = cursor.fetchone()
+
+            if not row or not row["value"]:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("last_market_scan_utc", now.isoformat(), now),
+                )
+                conn.commit()
+                return True
+
+            try:
+                last = datetime.datetime.fromisoformat(str(row["value"]))
+            except Exception:
+                last = now - datetime.timedelta(days=365)
+
+            if (now - last) >= datetime.timedelta(hours=24):
+                cursor.execute(
+                    "UPDATE system_settings SET value = ?, updated_at = ? WHERE key = ?",
+                    (now.isoformat(), now, "last_market_scan_utc"),
+                )
+                conn.commit()
+                return True
+
+        return False
+
     # -------------------------------------------------
     # DECISION ENGINE
     # -------------------------------------------------
@@ -133,8 +199,8 @@ class NovaBrainLoop:
         if confidence < 60:
             return "analyze system"
 
-        # Generate more market intelligence
-        if pending_prop < 3:
+        # Daily market intelligence (guarded by 24h interval)
+        if self._should_run_daily_market_scan():
             return "analyze market"
 
         # Expand experiments
@@ -167,3 +233,25 @@ class NovaBrainLoop:
                 "level": "warn",
                 "message": f"Learning update failed: {e}"
             })
+
+    def _record_reflection(self, action: str, state: dict, result: dict):
+        try:
+            self.reflection.record_reflection(
+                {
+                    "cycle_id": str(datetime.datetime.utcnow().timestamp()),
+                    "primary_goal_snapshot": action,
+                    "input_objective": action,
+                    "execution_result": str(result),
+                    "success": bool(result.get("success") or result.get("decision", {}).get("success")),
+                    "confidence_before": state.get("score"),
+                    "confidence_after": state.get("score"),
+                }
+            )
+        except Exception as e:
+            broadcast(
+                {
+                    "type": "log",
+                    "level": "warn",
+                    "message": f"Reflection record failed: {e}",
+                }
+            )

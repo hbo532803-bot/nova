@@ -1,44 +1,35 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from typing import Dict
 import uuid
 from datetime import datetime, timedelta
 
 from backend.frontend_api.event_bus import broadcast
-from backend.frontend_api.events import log_event
 
-from backend.memory.goal_memory import remember, list_goals, primary_goal
+from backend.memory.goal_memory import list_goals, primary_goal
 from backend.memory.reflection_memory import ReflectionMemory
 
-from backend.intelligence.ethics_gate import check
-from backend.intelligence.llm_engine import run_llm_reasoning
-from backend.intelligence.decision_router import route_decision
-from backend.intelligence.planning_brain import brain
 from backend.intelligence.confidence_engine import ConfidenceEngine
 from backend.intelligence.self_analyzer import SelfAnalyzer
-from backend.intelligence.suggestion_executor import SuggestionExecutor
-
-from backend.intelligence.strategic_planner import StrategicPlanner
-from backend.intelligence.plan_executor import PlanExecutor
-from backend.intelligence.experiment_engine import EconomicEngine
-from backend.intelligence.blueprint_engine import BlueprintEngine
-from backend.intelligence.agent_orchestrator import AgentOrchestrator
-from backend.intelligence.economic_controller import EconomicController
-
-from backend.intelligence.market_engine.weekly_runner import MarketWeeklyRunner
-from backend.intelligence.market_engine.threshold_advisor import ThresholdAdvisor
+from backend.runtime.command_queue import CommandQueue
+from backend.intelligence.opportunity_engine import OpportunityEngine
 
 from backend.system.permission_gate import permission_gate
 from backend.system.kill_switch import kill_switch
+from backend.system.state_store import StateStore
+from backend.system.validation import validate_architecture
+from backend.intelligence.playbooks.library import list_playbooks
+from backend.intelligence.experiment_analytics import ExperimentAnalytics
+from backend.system.stability import SystemStability
+import json
 
-from backend.tools.diff_engine import apply_change
 from backend.tools.rollback_manager import rollback_last
 
 from backend.auth import authenticate_user, create_access_token, get_current_admin
+from backend.system.audit_log import audit_log
 
 from backend.database import get_db
 
-from backend.core.nova_core import nova_core
+from backend.core.nova_core import get_nova_core
 from backend.nova import Nova
 
 router = APIRouter()
@@ -131,7 +122,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # STATUS
 # -------------------------------------------------
 
-@router.get("/api/status")
+@router.get("/status")
 def get_status():
 
     engine = ConfidenceEngine()
@@ -140,6 +131,18 @@ def get_status():
         "status": "running",
         "confidence": engine.get_score()
     }
+
+
+@router.get("/confidence")
+def get_confidence(admin=Depends(get_current_admin)):
+    engine = ConfidenceEngine()
+    return engine.get_state()
+
+
+@router.get("/system/state")
+def get_system_state(admin=Depends(get_current_admin)):
+    store = StateStore()
+    return store.get().__dict__
 
 
 # -------------------------------------------------
@@ -158,11 +161,16 @@ def system_health():
         "timestamp": datetime.utcnow()
     }
 
-@router.get("/api/system/self-analysis")
+@router.get("/system/self-analysis")
 def system_self_analysis(admin=Depends(get_current_admin)):
 
     analyzer = SelfAnalyzer()
     return analyzer.generate_system_report()
+
+
+@router.get("/system/validate")
+def system_validate(admin=Depends(get_current_admin)):
+    return validate_architecture()
 
 
 # -------------------------------------------------
@@ -173,6 +181,7 @@ def system_self_analysis(admin=Depends(get_current_admin)):
 def pause_system(admin=Depends(get_current_admin)):
 
     kill_switch.trigger()
+    audit_log(actor=admin.get("username"), action="SYSTEM_PAUSE")
 
     return {"status": "paused"}
 
@@ -185,6 +194,7 @@ def pause_system(admin=Depends(get_current_admin)):
 def resume_system(admin=Depends(get_current_admin)):
 
     kill_switch.reset()
+    audit_log(actor=admin.get("username"), action="SYSTEM_RESUME")
 
     return {"status": "running"}
 
@@ -216,7 +226,8 @@ def run(request: dict, admin=Depends(get_current_admin)):
         "message": "Run requested"
     })
 
-    result = nova_core.handle_command(goal)
+    audit_log(actor=admin.get("username"), action="RUN", target="nova_core", payload={"goal": goal})
+    result = get_nova_core().handle_command(goal)
 
     broadcast({
         "type": "log",
@@ -228,6 +239,61 @@ def run(request: dict, admin=Depends(get_current_admin)):
 
 
 # -------------------------------------------------
+# COMMANDS (AI CONTROL CONSOLE)
+# -------------------------------------------------
+
+@router.post("/commands")
+def submit_command(payload: dict, admin=Depends(get_current_admin)):
+    text = (payload.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(text)
+    audit_log(actor=admin.get("username"), action="COMMAND_SUBMIT", target=str(cmd_id), payload={"text": text})
+    return {"id": cmd_id, "status": "PENDING", "text": text}
+
+
+@router.get("/commands")
+def list_commands(limit: int = 20, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    return {"commands": [dict(r) for r in q.fetch_recent(limit=limit)]}
+
+
+# -------------------------------------------------
+# AGENTS (real DB state)
+# -------------------------------------------------
+
+@router.get("/agents")
+def list_agents(status: str | None = None, admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if status:
+            cursor.execute("SELECT * FROM agents WHERE status=? ORDER BY total_revenue DESC", (status,))
+        else:
+            cursor.execute("SELECT * FROM agents ORDER BY total_revenue DESC")
+        rows = cursor.fetchall()
+    return {"agents": [dict(r) for r in rows]}
+
+
+@router.post("/agents/{agent_id}/hibernate")
+def hibernate_agent(agent_id: int, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"hibernate agent {agent_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/agents/{agent_id}/wake")
+def wake_agent(agent_id: int, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"wake agent {agent_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+# -------------------------------------------------
 # ROLLBACK
 # -------------------------------------------------
 
@@ -235,6 +301,7 @@ def run(request: dict, admin=Depends(get_current_admin)):
 def rollback(path: str, admin=Depends(get_current_admin)):
 
     rollback_last(path)
+    audit_log(actor=admin.get("username"), action="ROLLBACK_LAST", target=path)
 
     broadcast({
         "type": "log",
@@ -244,48 +311,296 @@ def rollback(path: str, admin=Depends(get_current_admin)):
 
     return {"ok": True}
 
-
 # -------------------------------------------------
-# ECONOMIC
-# -------------------------------------------------
-
-@router.get("/economic/run")
-def run_economic_cycle(admin=Depends(get_current_admin)):
-
-    engine = EconomicEngine()
-    return engine.run_cycle()
-
-
-@router.get("/economic/blueprint")
-def generate_blueprint(admin=Depends(get_current_admin)):
-
-    engine = BlueprintEngine()
-    return engine.run_cycle()
-
-
-@router.post("/economic/orchestrate")
-def run_orchestrator(data: dict, admin=Depends(get_current_admin)):
-
-    idea = data.get("idea")
-
-    if not idea:
-        return {"error": "Idea required"}
-
-    orchestrator = AgentOrchestrator()
-    return orchestrator.orchestrate(idea)
-
-
-# -------------------------------------------------
-# MARKET
+# MARKET / OPPORTUNITIES / EXPERIMENTS (mutations via command queue)
 # -------------------------------------------------
 
-@router.post("/market/run-weekly")
-def run_weekly_market_scan(background_tasks: BackgroundTasks, admin=Depends(get_current_admin)):
+@router.post("/market/scan")
+def enqueue_market_scan(admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command("analyze market")
+    return {"command_id": cmd_id, "status": "PENDING"}
 
-    runner = MarketWeeklyRunner()
-    background_tasks.add_task(runner.run_full_weekly_cycle)
 
-    return {"status": "started"}
+@router.post("/strategy/learn")
+def enqueue_strategy_learning(admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command("learn strategy")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.get("/system/stability/health")
+def stability_health(admin=Depends(get_current_admin)):
+    # read-only (safe), but mirrors action-based HEALTH_CHECK semantics
+    return SystemStability().health()
+
+
+@router.post("/system/stability/recover")
+def enqueue_stability_recover(admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command("recover system")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.get("/analytics/experiments")
+def analytics_experiments(limit: int = 50, admin=Depends(get_current_admin)):
+    a = ExperimentAnalytics()
+    return {"summary": a.summary(limit=limit), "experiments": a.list(limit=limit)}
+
+
+@router.post("/experiments/portfolio/evaluate")
+def enqueue_portfolio_evaluate(admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command("evaluate portfolio")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/research/run")
+def enqueue_research(admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command("research opportunities")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/agents/factory/create")
+def enqueue_agent_factory_create(payload: dict, admin=Depends(get_current_admin)):
+    caps = payload.get("capabilities") or []
+    if not isinstance(caps, list) or not caps:
+        raise HTTPException(status_code=400, detail="capabilities list required")
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"create agent for {', '.join([str(c) for c in caps])}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/agents/factory/evolve")
+def enqueue_agent_factory_evolve(admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command("evolve agents")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.get("/analytics/agents/activity")
+def analytics_agent_activity(limit: int = 200, admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT agent_name, action, result, created_at
+            FROM agent_actions
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    return {"events": [dict(r) for r in rows]}
+
+@router.get("/analytics/agents/productivity")
+def analytics_agent_productivity(days: int = 7, admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT agent_name, COUNT(*) as actions
+            FROM agent_actions
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY agent_name
+            ORDER BY actions DESC
+            """,
+            (f"-{int(days)} days",),
+        )
+        rows = cursor.fetchall()
+    return {"days": days, "agents": [dict(r) for r in rows]}
+
+
+@router.get("/analytics/confidence/trend")
+def analytics_confidence_trend(limit: int = 50, admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, success, confidence_before, confidence_after, created_at
+            FROM reflections
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    points = [dict(r) for r in rows][::-1]
+    return {"points": points}
+
+
+@router.get("/missions/{mission_id}/memory")
+def mission_memory(mission_id: str, limit: int = 200, admin=Depends(get_current_admin)):
+    from backend.memory.working_memory import WorkingMemoryStore
+
+    return {"mission_id": mission_id, "items": WorkingMemoryStore().list(mission_id, limit=limit)}
+
+
+@router.get("/knowledge/graph/summary")
+def knowledge_graph_summary(admin=Depends(get_current_admin)):
+    from backend.knowledge.graph_store import KnowledgeGraphStore
+
+    return KnowledgeGraphStore().summary()
+
+
+@router.get("/knowledge/graph/neighbors")
+def knowledge_graph_neighbors(node_type: str, node_key: str, limit: int = 50, admin=Depends(get_current_admin)):
+    from backend.knowledge.graph_store import KnowledgeGraphStore
+
+    return KnowledgeGraphStore().neighbors(node_type, node_key, limit=limit)
+
+
+@router.get("/knowledge/graph/path")
+def knowledge_graph_path(
+    source_type: str,
+    source_key: str,
+    target_type: str,
+    target_key: str,
+    max_depth: int = 3,
+    admin=Depends(get_current_admin),
+):
+    from backend.knowledge.graph_store import KnowledgeGraphStore
+
+    return KnowledgeGraphStore().find_path(source_type, source_key, target_type, target_key, max_depth=max_depth)
+
+
+@router.get("/knowledge/insights")
+def knowledge_insights(admin=Depends(get_current_admin)):
+    from backend.knowledge.reasoner import KnowledgeGraphReasoner
+
+    return KnowledgeGraphReasoner().insights(limit_edges=1000)
+
+
+@router.get("/analytics/portfolio/health")
+def portfolio_health(admin=Depends(get_current_admin)):
+    from backend.intelligence.experiment_lifecycle import ExperimentLifecycleEngine
+
+    return ExperimentLifecycleEngine().evaluate_portfolio(limit=50)
+
+
+@router.get("/analytics/strategy/current")
+def current_strategy(admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM system_settings WHERE key='strategy_adjustments'")
+        row = cursor.fetchone()
+    if not row or not row["value"]:
+        return {"ok": False, "strategy": None}
+    try:
+        return {"ok": True, "strategy": json.loads(str(row["value"]))}
+    except Exception:
+        return {"ok": True, "strategy": str(row["value"])}
+
+
+@router.get("/cognitive/last")
+def cognitive_last(admin=Depends(get_current_admin)):
+    from backend.core.cognitive_cycle import CognitiveCycle
+
+    return {"ok": True, "cognitive": CognitiveCycle().last()}
+
+
+@router.get("/research/last")
+def research_last(admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM system_settings WHERE key='research_last'")
+        row = cursor.fetchone()
+    if not row or not row["value"]:
+        return {"ok": False, "research": None}
+    try:
+        return {"ok": True, "research": json.loads(str(row["value"]))}
+    except Exception:
+        return {"ok": True, "research": str(row["value"])}
+
+
+# -------------------------------------------------
+# OPPORTUNITIES (Opportunity Engine)
+# -------------------------------------------------
+
+@router.get("/opportunities")
+def list_opportunity_proposals(admin=Depends(get_current_admin)):
+    eng = OpportunityEngine()
+    return {"proposals": eng.list_proposals()}
+
+
+@router.post("/opportunities/{proposal_id}/approve")
+def approve_opportunity(proposal_id: int, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"opportunity approve {proposal_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/opportunities/{proposal_id}/reject")
+def reject_opportunity(proposal_id: int, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"opportunity reject {proposal_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/opportunities/{proposal_id}/convert")
+def convert_opportunity_to_experiment(proposal_id: int, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"opportunity convert {proposal_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.get("/experiments")
+def list_experiments(admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM economic_experiments ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+    return {"experiments": [dict(r) for r in rows]}
+
+
+@router.get("/playbooks")
+def get_playbooks(admin=Depends(get_current_admin)):
+    return {"playbooks": list_playbooks()}
+
+
+@router.post("/experiments/{experiment_id}/playbooks/{playbook_name}/attach")
+def attach_playbook(experiment_id: int, playbook_name: str, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"attach playbook {playbook_name} to experiment {experiment_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.post("/experiments/{experiment_id}/run")
+def enqueue_run_experiment(experiment_id: int, admin=Depends(get_current_admin)):
+    q = CommandQueue()
+    q.ensure_table()
+    cmd_id = q.add_command(f"run experiment {experiment_id}")
+    return {"command_id": cmd_id, "status": "PENDING"}
+
+
+@router.get("/learning/reflections")
+def list_reflections(limit: int = 50, admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, cycle_id, primary_goal, input_objective, execution_result, success, confidence_before, confidence_after, created_at
+            FROM reflections
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    return {"reflections": [dict(r) for r in rows]}
 
 
 # -------------------------------------------------
@@ -313,90 +628,3 @@ def nova_dashboard(admin=Depends(get_current_admin)):
         "experiments": experiments,
         "agents": agents
     }
-
-
-# -------------------------------------------------
-# FULL NOVA CYCLE
-# -------------------------------------------------
-
-@router.post("/nova/run-full-cycle")
-def run_full_cycle(admin=Depends(get_current_admin)):
-
-    orchestrator = AgentOrchestrator()
-    return orchestrator.run_full_system_cycle()
-
-
-
-@router.post("/nova/opportunity/{id}/execute")
-def execute_opportunity(id:int):
-
-    return {"status":"execution_started","id":id}    
-
-@router.post("/nova/opportunity/discover")
-def discover():
-
-    # run opportunity scanner
-
-    return {"status":"scan_started"}  
-
-@router.get("/nova/agents")
-def get_agents():
-
-    return [
-        {
-            "id":1,
-            "name":"Agent Alpha",
-            "status":"running"
-        },
-        {
-            "id":2,
-            "name":"Agent Beta",
-            "status":"idle"
-        }
-    ]  
-
-@router.get("/nova/opportunities")
-def get_opportunities():
-
-    return [
-        {
-            "id": 1,
-            "title": "Market Arbitrage",
-            "description": "Price difference detected between exchanges"
-        },
-        {
-            "id": 2,
-            "title": "Automation Opportunity",
-            "description": "Process automation detected"
-        }
-    ]
-
-
-@router.get("/nova/execution")
-def get_execution_pipeline():
-
-    return [
-        {
-            "id": 1,
-            "name": "Opportunity Execution",
-            "status": "running"
-        },
-        {
-            "id": 2,
-            "name": "Experiment Task",
-            "status": "pending"
-        }
-    ]   
-
-
-@router.get("/nova/logs")
-def get_logs():
-
-    return [
-        {
-            "message": "Nova system started"
-        },
-        {
-            "message": "Agent Alpha executed task"
-        }
-    ]     

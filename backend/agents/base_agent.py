@@ -10,6 +10,7 @@ class BaseAgent(ABC):
     def __init__(self, name: str):
         self.name = name
         self.trust_score = 70  # default neutral
+        self.capabilities: set[str] = set()
 
     @abstractmethod
     def can_handle(self, plan: Dict) -> bool:

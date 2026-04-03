@@ -1,26 +1,46 @@
-import { runOpportunity } from "../../services/novaApi";
 import { useNovaStore } from "../../state/novaStore";
+import { approveOpportunity, rejectOpportunity, convertOpportunity } from "../../services/consoleApi";
 
 export default function OpportunityList(){
 
   const opportunities = useNovaStore(s=>s.opportunities) || [];
 
-  async function executeOpportunity(id){
+  async function approve(id){
 
     try{
 
-      await runOpportunity(id);
+      await approveOpportunity(id);
 
-      alert("Opportunity execution started");
+      alert("Approved (queued)");
 
     }
     catch(e){
 
       console.error(e);
-      alert("Execution failed");
+      alert("Action failed");
 
     }
 
+  }
+
+  async function reject(id){
+    try{
+      await rejectOpportunity(id);
+      alert("Rejected (queued)");
+    }catch(e){
+      console.error(e);
+      alert("Action failed");
+    }
+  }
+
+  async function convert(id){
+    try{
+      await convertOpportunity(id);
+      alert("Convert to experiment queued");
+    }catch(e){
+      console.error(e);
+      alert("Action failed");
+    }
   }
 
   if(opportunities.length===0){
@@ -53,26 +73,53 @@ export default function OpportunityList(){
           }}
         >
 
-          <h3>{op.title || "Opportunity"}</h3>
+          <h3>{op.niche_name || op.title || "Opportunity"}</h3>
 
-          <p>{op.description || "No description"}</p>
+          <p style={{opacity:.8}}>Cash score: {op.cash_score}</p>
+          <p style={{opacity:.8}}>Budget: {op.proposed_budget}</p>
+          <p>Status: {op.status}</p>
 
-          <button
-            onClick={()=>executeOpportunity(op.id)}
-            style={{
-              marginTop:"10px",
-              padding:"8px 14px",
-              background:"#16a34a",
-              border:"none",
-              color:"white",
-              borderRadius:"6px",
-              cursor:"pointer"
-            }}
-          >
-
-            Execute
-
-          </button>
+          <div style={{display:"flex",gap:"10px",marginTop:"10px",flexWrap:"wrap"}}>
+            <button
+              onClick={()=>approve(op.id)}
+              style={{
+                padding:"8px 14px",
+                background:"#16a34a",
+                border:"none",
+                color:"white",
+                borderRadius:"6px",
+                cursor:"pointer"
+              }}
+            >
+              Approve
+            </button>
+            <button
+              onClick={()=>reject(op.id)}
+              style={{
+                padding:"8px 14px",
+                background:"#dc2626",
+                border:"none",
+                color:"white",
+                borderRadius:"6px",
+                cursor:"pointer"
+              }}
+            >
+              Reject
+            </button>
+            <button
+              onClick={()=>convert(op.id)}
+              style={{
+                padding:"8px 14px",
+                background:"#2563eb",
+                border:"none",
+                color:"white",
+                borderRadius:"6px",
+                cursor:"pointer"
+              }}
+            >
+              Convert → Experiment
+            </button>
+          </div>
 
         </div>
 

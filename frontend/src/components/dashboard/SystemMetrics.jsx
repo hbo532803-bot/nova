@@ -2,11 +2,12 @@ import { useNovaStore } from "../../state/novaStore";
 
 export default function SystemMetrics(){
 
-  const system = useNovaStore(s=>s.system);
+  const systemState = useNovaStore(s=>s.systemState);
+  const confidence = useNovaStore(s=>s.confidence);
 
-  const cpu = system?.cpu ?? 0;
-  const memory = system?.memory ?? 0;
-  const tasks = system?.tasks ?? 0;
+  const state = systemState?.state ?? "UNKNOWN";
+  const score = confidence?.score ?? "-";
+  const autonomy = confidence?.autonomy ?? "-";
 
   return(
 
@@ -17,11 +18,11 @@ export default function SystemMetrics(){
       marginBottom:"20px"
     }}>
 
-      <Metric title="CPU Usage" value={`${cpu}%`} />
+      <Metric title="System State" value={state} />
 
-      <Metric title="Memory Usage" value={`${memory}%`} />
+      <Metric title="Confidence" value={score} />
 
-      <Metric title="Active Tasks" value={tasks} />
+      <Metric title="Autonomy" value={autonomy} />
 
     </div>
 

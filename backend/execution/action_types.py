@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from enum import Enum
+
+
+class ActionType(str, Enum):
+    MARKET_SCAN = "MARKET_SCAN"
+    OPPORTUNITY_DISCOVER = "OPPORTUNITY_DISCOVER"
+    EXPERIMENT_CREATE = "EXPERIMENT_CREATE"
+    EXPERIMENT_RUN = "EXPERIMENT_RUN"
+    REFLECTION_RECORD = "REFLECTION_RECORD"
+    AGENT_HIBERNATE = "AGENT_HIBERNATE"
+    AGENT_WAKE = "AGENT_WAKE"
+    STATE_TRANSITION = "STATE_TRANSITION"
+
+    # Opportunity governance (still executed via action spine)
+    OPPORTUNITY_APPROVE = "OPPORTUNITY_APPROVE"
+    OPPORTUNITY_REJECT = "OPPORTUNITY_REJECT"
+    OPPORTUNITY_CONVERT = "OPPORTUNITY_CONVERT"
+
+    # Experiment playbooks
+    PLAYBOOK_ATTACH = "PLAYBOOK_ATTACH"
+
+    # Strategy learning
+    STRATEGY_LEARN = "STRATEGY_LEARN"
+
+    # Stability / recovery
+    HEALTH_CHECK = "HEALTH_CHECK"
+    RECOVER_SYSTEM = "RECOVER_SYSTEM"
+
+    # Experiment lifecycle automation
+    EXPERIMENT_EVALUATE_PORTFOLIO = "EXPERIMENT_EVALUATE_PORTFOLIO"
+    EXPERIMENT_APPLY_LIFECYCLE = "EXPERIMENT_APPLY_LIFECYCLE"
+
+    # Knowledge graph
+    KG_UPSERT_NODE = "KG_UPSERT_NODE"
+    KG_ADD_EDGE = "KG_ADD_EDGE"
+
+    # Research / opportunity discovery
+    RESEARCH_RUN = "RESEARCH_RUN"
+
+    # Self-evolving agent factory
+    AGENT_FACTORY_CREATE = "AGENT_FACTORY_CREATE"
+
+    AGENT_FACTORY_EVOLVE = "AGENT_FACTORY_EVOLVE"
+

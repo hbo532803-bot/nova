@@ -13,7 +13,7 @@ def hardened_execute(plan: dict):
         return {
             "success": False,
             "error": "Executor returned None",
-            "data": None
+            "data": None,
         }
 
     if isinstance(raw, dict):
@@ -22,5 +22,5 @@ def hardened_execute(plan: dict):
 
     return {
         "success": True,
-        "data": raw
+        "data": raw,
     }

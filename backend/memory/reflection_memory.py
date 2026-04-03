@@ -2,6 +2,7 @@ import json
 import math
 import os
 from backend.database import get_db
+from backend.db_retry import run_db_write_with_retry
 from google import genai
 
 # Gemini client
@@ -40,10 +41,10 @@ class ReflectionMemory:
 
         embedding = get_embedding(data.get("input_objective", ""))
 
-        with get_db() as conn:
+        def _write(conn):
             cursor = conn.cursor()
-
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO reflections (
                     cycle_id,
                     primary_goal,
@@ -55,18 +56,22 @@ class ReflectionMemory:
                     embedding
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                str(data.get("cycle_id")),
-                str(data.get("primary_goal_snapshot")),
-                str(data.get("input_objective")),
-                str(data.get("execution_result")),
-                1 if data.get("success") else 0,
-                float(data.get("confidence_before") or 0),
-                float(data.get("confidence_after") or 0),
-                json.dumps(embedding) if embedding else None
-            ))
-
+                """,
+                (
+                    str(data.get("cycle_id")),
+                    str(data.get("primary_goal_snapshot")),
+                    str(data.get("input_objective")),
+                    str(data.get("execution_result")),
+                    1 if data.get("success") else 0,
+                    float(data.get("confidence_before") or 0),
+                    float(data.get("confidence_after") or 0),
+                    json.dumps(embedding) if embedding else None,
+                ),
+            )
             conn.commit()
+            return None
+
+        run_db_write_with_retry("reflections.insert", _write)
 
     # ----------------------------
     # EXACT MATCH HISTORY

@@ -295,10 +295,16 @@ class EconomicController:
     # MARKET → EXPERIMENT (CAPITAL SAFE)
     # =========================================================
 
-    def create_experiment_from_market(self, niche_name, budget):
+    def create_experiment_from_market(self, niche_name, budget, *, conn=None):
+        """
+        If conn is provided, runs inside caller transaction.
+        """
+        owned = conn is None
+        if owned:
+            with get_db() as _conn:
+                return self.create_experiment_from_market(niche_name, budget, conn=_conn)
 
-        with get_db() as conn:
-
+        try:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -346,11 +352,25 @@ class EconomicController:
                 WHERE id = 1
             """, (new_available, new_reserved))
 
-            conn.commit()
+            if owned:
+                conn.commit()
 
-        return {
+            return {
             "status": "approved",
             "experiment": niche_name,
             "allocated": budget,
             "remaining_capital": round(new_available, 2)
-        }
+            }
+        except Exception:
+            if owned:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise
+        finally:
+            if owned:
+                try:
+                    conn.close()
+                except Exception:
+                    pass

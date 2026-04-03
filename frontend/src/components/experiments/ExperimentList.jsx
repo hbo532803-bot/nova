@@ -1,15 +1,15 @@
 import { useNovaStore } from "../../state/novaStore";
-import { runExperiment } from "../../services/novaApi";
+import { runExperimentById } from "../../services/consoleApi";
 
 export default function ExperimentList(){
 
-  const experiments = useNovaStore(s=>s.execution) || [];
+  const experiments = useNovaStore(s=>s.experiments) || [];
 
   async function startExperiment(id){
 
     try{
 
-      await runExperiment(id);
+      await runExperimentById(id);
 
       alert("Experiment started");
 

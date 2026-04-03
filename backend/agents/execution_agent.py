@@ -1,10 +1,4 @@
 from backend.agents.base_agent import BaseAgent
-from backend.execution.hardened_executor import hardened_execute
-# --- PATCH START (agent uses system access helpers) ---
-from backend.system.file_reader import read_file
-from backend.system.file_editor import propose_edit
-from backend.system.command_runner import run_command
-# --- PATCH END ---
 
 
 class ExecutionAgent(BaseAgent):
@@ -15,9 +9,17 @@ class ExecutionAgent(BaseAgent):
         return "execute" in plan.get("steps", [])
 
     def execute(self, plan: dict) -> dict:
-        result = hardened_execute(plan)
+        # Agents propose an execution decision (which action to run); Supervisor triggers execution.
+        actions = plan.get("actions") or []
+        if actions:
+            decision = {"actions": actions}
+        else:
+            # Fallback to a safe no-op execution action.
+            decision = {"actions": [{"type": "REFLECTION_RECORD", "payload": {"note": "noop"}}]}
         return {
             "agent": self.name,
-            "result": result,
-            "success": result.success
+            "decision": decision,
+            "type": "execution",
+            "score": 5,
+            "success": True,
         }

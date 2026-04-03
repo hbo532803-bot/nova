@@ -1,29 +1,40 @@
-import { restartAgent } from "../../services/novaApi";
 import { useNovaStore } from "../../state/novaStore";
+import { hibernateAgent, wakeAgent } from "../../services/consoleApi";
 
 export default function SwarmControl(){
 
   const agents = useNovaStore(s=>s.agents) || [];
 
-  async function restartAll(){
+  async function wakeAll(){
 
     for(const agent of agents){
 
       try{
 
-        await restartAgent(agent.id);
+        await wakeAgent(agent.id);
 
       }
       catch(e){
 
-        console.error("Agent restart failed",agent.id);
+        console.error("Agent wake failed",agent.id);
 
       }
 
     }
 
-    alert("Swarm restart triggered");
+    alert("Wake queued for all agents");
 
+  }
+
+  async function hibernateAll(){
+    for(const agent of agents){
+      try{
+        await hibernateAgent(agent.id);
+      }catch(e){
+        console.error("Agent hibernate failed",agent.id);
+      }
+    }
+    alert("Hibernate queued for all agents");
   }
 
   return(
@@ -40,20 +51,35 @@ export default function SwarmControl(){
 
       <p>Total Agents: {agents.length}</p>
 
-      <button
-        onClick={restartAll}
-        style={{
-          padding:"8px 14px",
-          background:"#2563eb",
-          border:"none",
-          color:"white",
-          borderRadius:"6px"
-        }}
-      >
+      <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
+        <button
+          onClick={wakeAll}
+          style={{
+            padding:"8px 14px",
+            background:"#16a34a",
+            border:"none",
+            color:"white",
+            borderRadius:"6px",
+            cursor:"pointer"
+          }}
+        >
+          Wake all
+        </button>
 
-        Restart Swarm
-
-      </button>
+        <button
+          onClick={hibernateAll}
+          style={{
+            padding:"8px 14px",
+            background:"#dc2626",
+            border:"none",
+            color:"white",
+            borderRadius:"6px",
+            cursor:"pointer"
+          }}
+        >
+          Hibernate all
+        </button>
+      </div>
 
     </div>
 

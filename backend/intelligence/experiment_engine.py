@@ -2,6 +2,8 @@ import json
 import re
 from backend.llm import think
 from backend.database import get_db
+from backend.db_init import initialize_all_tables
+from backend.db_retry import run_db_write_with_retry
 
 
 class EconomicEngine:
@@ -108,30 +110,26 @@ Format:
     # -------------------------
     def store_experiment(self, experiment):
 
-      with get_db() as conn:
+      # Schema is owned by db_init; map legacy fields into the current table.
+      initialize_all_tables(reset=False)
+
+      name = str(experiment.get("idea") or "")
+      exp_type = str(experiment.get("model_type") or "")
+      score = int(experiment.get("internal_score") or 0)
+
+      def _write(conn):
         cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS economic_experiments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                idea TEXT,
-                model_type TEXT,
-                internal_score INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        cursor.execute("""
-            INSERT INTO economic_experiments (idea, model_type, internal_score)
-            VALUES (?, ?, ?)
-        """, (
-            experiment.get("idea"),
-            experiment.get("model_type"),
-            experiment.get("internal_score")
-        ))
-
+        cursor.execute(
+            """
+            INSERT INTO economic_experiments (name, experiment_type, notes, status, iteration)
+            VALUES (?, ?, ?, 'IDEA', 0)
+            """,
+            (name, exp_type, f"legacy_internal_score={score}"),
+        )
         conn.commit()
-        conn.close()
+        return None
+
+      run_db_write_with_retry("economic_experiments.insert.legacy", _write)
 
     # -------------------------
     # Run Full Cycle

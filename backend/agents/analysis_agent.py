@@ -9,8 +9,20 @@ class AnalysisAgent(BaseAgent):
         return "analyze" in plan.get("steps", [])
 
     def execute(self, plan: dict) -> dict:
+        # Agents propose decisions/actions; they never execute system actions directly.
+        goal = str(plan.get("goal", "")).lower()
+
+        if "market" in goal:
+            decision = {"action_type": "MARKET_SCAN", "reason": "Market-related command"}
+        elif "experiment" in goal:
+            decision = {"action_type": "EXPERIMENT_CREATE", "reason": "Experiment-related command"}
+        else:
+            decision = {"action_type": "REFLECTION_RECORD", "reason": "Default to learning/no-op"}
+
         return {
             "agent": self.name,
-            "result": "Analysis completed",
-            "success": True
+            "decision": decision,
+            "type": "analysis",
+            "score": 5,
+            "success": True,
         }

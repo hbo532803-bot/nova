@@ -1,4 +1,4 @@
-import { discoverOpportunities } from "../../services/novaApi";
+import { marketScan } from "../../services/consoleApi";
 
 export default function DiscoveryControl(){
 
@@ -6,7 +6,7 @@ export default function DiscoveryControl(){
 
     try{
 
-      await discoverOpportunities();
+      await marketScan();
 
       alert("Opportunity scan started");
 

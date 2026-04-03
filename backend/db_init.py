@@ -29,6 +29,14 @@ def initialize_all_tables(reset: bool = False):
 
                 DROP TABLE IF EXISTS decision_memory;
                 DROP TABLE IF EXISTS agent_actions;
+                DROP TABLE IF EXISTS nova_system_state;
+                DROP TABLE IF EXISTS experiment_metrics;
+                DROP TABLE IF EXISTS working_memory;
+                DROP TABLE IF EXISTS knowledge_nodes;
+                DROP TABLE IF EXISTS knowledge_edges;
+                DROP TABLE IF EXISTS nova_commands;
+                DROP TABLE IF EXISTS audit_log;
+                DROP TABLE IF EXISTS agent_tasks;
 
                 """)
 
@@ -54,10 +62,15 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS reflections (
+            CREATE TABLE IF NOT EXISTS reflections(               
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                goal TEXT,
-                outcome TEXT,
+                cycle_id TEXT,
+                primary_goal TEXT,
+                input_objective TEXT,
+                execution_result TEXT,
+                success INTEGER,
+                confidence_before REAL,
+                confidence_after REAL,
                 embedding TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -82,6 +95,34 @@ def initialize_all_tables(reset: bool = False):
                 key TEXT UNIQUE,
                 value TEXT,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            # ================= SYSTEM STATE =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS nova_system_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                state TEXT NOT NULL,
+                last_error TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            INSERT OR IGNORE INTO nova_system_state (id, state) VALUES (1, 'BOOTING')
+            """)
+
+            # ================= COMMAND QUEUE =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS nova_commands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                command_text TEXT,
+                status TEXT DEFAULT 'PENDING',
+                result TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME
             )
             """)
 
@@ -157,7 +198,7 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_market_week
+            CREATE INDEX IF NOT EXISTS idx_market_signals_week
                 ON market_signals(week_tag)
             """)
 
@@ -180,8 +221,8 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_market_week
-            ON market_niches(week_tag)
+            CREATE INDEX IF NOT EXISTS idx_market_niches_week
+                ON market_niches(week_tag)
             """)
 
             cursor.execute("""
@@ -222,13 +263,90 @@ def initialize_all_tables(reset: bool = False):
             )
             """)
 
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                task TEXT,
+                result TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS experiment_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment_id INTEGER,
+                metric_key TEXT,
+                metric_value REAL,
+                source TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS working_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                key TEXT,
+                value TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_working_memory_mission
+            ON working_memory(mission_id)
+            """)
+
+            # ================= KNOWLEDGE GRAPH =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_type TEXT,
+                node_key TEXT,
+                data TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(node_type, node_key)
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT,
+                source_key TEXT,
+                relation TEXT,
+                target_type TEXT,
+                target_key TEXT,
+                weight REAL DEFAULT 1.0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            # ================= AUDIT LOGGING =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor TEXT,
+                action TEXT NOT NULL,
+                target TEXT,
+                payload TEXT,
+                ip TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
             conn.commit()
 
         except Exception as e:
             conn.rollback()
             raise e
 
-    print("✅ DB FULLY INITIALIZED")
+    print("DB FULLY INITIALIZED")
 
 
 if __name__ == "__main__":

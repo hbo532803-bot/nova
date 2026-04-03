@@ -1,7 +1,12 @@
 import MainLayout from "../components/layout/MainLayout";
 import { useNovaStore } from "../state/novaStore";
+import useEventBus from "../hooks/useEventBus";
+import useNovaSystem from "../hooks/useNovaSystem";
 
 export default function Logs(){
+
+  useNovaSystem();
+  useEventBus();
 
   const logs = useNovaStore((s)=>s.logs);
 
