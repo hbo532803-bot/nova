@@ -6,7 +6,6 @@ import time
 from pytrends.request import TrendReq
 
 from backend.database import get_db
-from backend.db_init import initialize_all_tables
 from backend.db_retry import run_db_write_with_retry
 
 
@@ -34,8 +33,7 @@ class MarketDataCollector:
     # -------------------------------------------------
 
     def ensure_table(self):
-        # Schema is owned by db_init; keep this for legacy call sites.
-        initialize_all_tables(reset=False)
+        return None
 
     # -------------------------------------------------
     # STORE SIGNAL

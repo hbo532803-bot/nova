@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 from backend.database import get_db
@@ -82,7 +83,7 @@ class ExperimentAnalytics:
             if roi != 0:
                 return roi
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in experiment_analytics.py")
 
         revenue = float(e.get("revenue_generated") or 0)
         cost = float(e.get("cost_incurred") or 0)

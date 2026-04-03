@@ -9,6 +9,7 @@ Architecture constraints (docs):
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
 from backend.execution.execution_engine import ExecutionEngine
@@ -80,7 +81,7 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
                     if path:
                         rollback_stack.append({"type": "ROLLBACK_FILE", "path": str(path)})
             except Exception:
-                pass
+                logging.getLogger(__name__).exception("Suppressed exception in executor.py")
             return res
 
         def rollback(_p: Dict[str, Any]) -> None:
@@ -131,7 +132,7 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             }
             engine.execute(reflection_plan, lambda p, a=reflection_action: router.run(a, p), rollback=rollback)
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in executor.py")
 
         if not exec_result.success:
             overall_success = False
@@ -139,7 +140,7 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 rollback(action_plan)
             except Exception:
-                pass
+                logging.getLogger(__name__).exception("Suppressed exception in executor.py")
 
     execution_payload = {
         "success": overall_success,

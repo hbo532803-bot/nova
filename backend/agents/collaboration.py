@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -51,6 +52,6 @@ class CollaborationOrchestrator:
             if mission_id:
                 WorkingMemoryStore().put(mission_id, key, str(value))
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in collaboration.py")
         broadcast({"type": "log", "level": "info", "message": f"Shared context updated: {key}"})
 
