@@ -1,0 +1,19 @@
+{
+  "artifacts": [
+    {
+      "key": "action:0:STATE_TRANSITION",
+      "output": {
+        "type": "STATE_TRANSITION",
+        "success": true,
+        "data": {
+          "state": "IDLE",
+          "updated_at": "2026-04-03 08:33:52.990417"
+        },
+        "error": null,
+        "rolled_back": false,
+        "duration_ms": 45
+      },
+      "created_at": "2026-04-03 08:33:53"
+    }
+  ]
+}
