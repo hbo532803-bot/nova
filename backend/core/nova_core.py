@@ -57,6 +57,19 @@ class NovaCore:
 
             return result
 
+    def requirement_to_command(self, requirement: dict) -> str:
+        """
+        Integration hook: convert structured user requirement into a command string
+        that keeps execution routed through NovaCore.
+        """
+        service = str(requirement.get("service") or "consultation")
+        goal = str(requirement.get("goal") or "").strip()
+        details = requirement.get("details") or {}
+        offers = details.get("offers") or []
+        preferred = next((o for o in offers if o.get("tier") == "STANDARD"), offers[0] if offers else None)
+        tier = str((preferred or {}).get("tier") or "STANDARD")
+        return f"run mission {service}: {goal} [{tier}]"
+
     # ====================================
     # PLAN CREATION
     # ====================================

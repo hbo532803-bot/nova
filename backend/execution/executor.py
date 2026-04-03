@@ -17,6 +17,8 @@ from backend.execution.action_types import ActionType
 from backend.frontend_api.event_bus import broadcast
 from backend.tools.rollback_manager import rollback_last
 from backend.system.audit_log import audit_log
+from backend.services.result_collector import ResultCollector
+from backend.services.delivery_service import DeliveryService
 
 
 def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -26,15 +28,21 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
     """
     engine = ExecutionEngine()
     router = ActionRouter()
+    collector = ResultCollector()
+    delivery = DeliveryService()
+    mission_id = str(plan.get("mission_id") or plan.get("created_at") or "")
+    order_id = str(plan.get("order_id") or "")
 
     actions = plan.get("actions") or []
     if not actions:
+        aggregated = collector.collect_outputs(mission_id=mission_id or None, order_id=order_id or None)
         return {
             "success": True,
             "data": {"info": "no actions", "goal": plan.get("goal")},
             "error": None,
             "rolled_back": False,
             "duration_ms": 0,
+            "result": delivery.build_final_result(aggregated, type_hint=str(plan.get("goal") or "")),
         }
 
     results: list[dict] = []
@@ -93,6 +101,11 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
                 "duration_ms": exec_result.duration_ms,
             }
         )
+        collector.store_task_output(
+            mission_id,
+            key=f"action:{idx}:{act_type}",
+            output=results[-1],
+        )
 
         # Always record reflection as an action routed through the spine.
         try:
@@ -128,10 +141,22 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 pass
 
-    return {
+    execution_payload = {
         "success": overall_success,
         "data": {"actions": results},
         "error": None if overall_success else "one_or_more_actions_failed",
         "rolled_back": any(r["rolled_back"] for r in results),
         "duration_ms": sum(int(r["duration_ms"] or 0) for r in results),
     }
+
+    try:
+        aggregated = collector.collect_outputs(mission_id=mission_id or None, order_id=order_id or None)
+        execution_payload["result"] = delivery.build_final_result(
+            aggregated,
+            type_hint=str(plan.get("goal") or ""),
+        )
+    except Exception:
+        # Do not alter execution success path if result assembly fails.
+        pass
+
+    return execution_payload

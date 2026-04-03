@@ -31,11 +31,17 @@ from backend.database import get_db
 
 from backend.core.nova_core import get_nova_core
 from backend.nova import Nova
+from backend.services.requirement_engine import RequirementEngineService
+from backend.services.result_collector import ResultCollector
+from backend.services.delivery_service import DeliveryService
 
 router = APIRouter()
 
 STATE = {"status": "IDLE"}
 PENDING_DIFF = {}
+_requirement_engine = RequirementEngineService()
+_result_collector = ResultCollector()
+_delivery_service = DeliveryService()
 
 # -------------------------------------------------
 # Utility
@@ -236,6 +242,45 @@ def run(request: dict, admin=Depends(get_current_admin)):
     })
 
     return result
+
+
+@router.post("/requirements/intake")
+def requirement_intake(payload: dict, admin=Depends(get_current_admin)):
+    """
+    User-facing requirement intake.
+    Optional execution remains inside NovaCore -> Supervisor -> ExecutionEngine pipeline.
+    """
+    user_input = (payload.get("input") or "").strip()
+    if not user_input:
+        raise HTTPException(status_code=400, detail="input is required")
+
+    provided = payload.get("details") or {}
+    execute = bool(payload.get("execute", False))
+
+    requirement = _requirement_engine.build_requirement(user_input=user_input, provided=provided)
+    command = get_nova_core().requirement_to_command(requirement)
+
+    response = {
+        "requirement": requirement,
+        "command": command,
+        "executed": False,
+    }
+
+    if execute:
+        response["execution_result"] = get_nova_core().handle_command(command)
+        response["executed"] = True
+
+    return response
+
+
+@router.get("/order/result/{id}")
+def order_result(id: str, admin=Depends(get_current_admin)):
+    aggregated = _result_collector.collect_outputs(order_id=id)
+    mission_id = aggregated.get("mission_id")
+    if not mission_id:
+        # id may already be a mission_id
+        aggregated = _result_collector.collect_outputs(mission_id=id)
+    return _delivery_service.build_final_result(aggregated)
 
 
 # -------------------------------------------------
