@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -184,7 +185,7 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.receive_text()
 
     except Exception:
-        pass
+        logging.getLogger(__name__).exception("Suppressed exception in app.py")
 
     finally:
         event_bus.unregister(ws)
