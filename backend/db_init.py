@@ -4,6 +4,7 @@ from threading import Lock
 
 _db_init_lock = Lock()
 _db_initialized = False
+_db_init_logged = False
 
 
 def _schema_present(cursor) -> bool:
@@ -19,6 +20,7 @@ def _schema_present(cursor) -> bool:
 
 
 def initialize_all_tables(reset: bool = False):
+    global _db_initialized, _db_init_logged
     global _db_initialized
 
     with _db_init_lock:
@@ -372,6 +374,9 @@ def initialize_all_tables(reset: bool = False):
                 raise e
 
         _db_initialized = True
+        if not _db_init_logged:
+            print("DB FULLY INITIALIZED")
+            _db_init_logged = True
         print("DB FULLY INITIALIZED")
         return True
 
