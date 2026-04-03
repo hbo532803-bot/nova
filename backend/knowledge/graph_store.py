@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from backend.database import get_db
-from backend.db_init import initialize_all_tables
 from backend.db_retry import run_db_write_with_retry
 
 
@@ -18,7 +17,7 @@ class KnowledgeGraphStore:
 
     def ensure(self) -> None:
         # Schema is owned by db_init; this is a defensive ensure for runtime usage.
-        initialize_all_tables(reset=False)
+        return None
 
     def upsert_node(self, node_type: str, node_key: str, data: Dict[str, Any]) -> Dict[str, Any]:
         self.ensure()
