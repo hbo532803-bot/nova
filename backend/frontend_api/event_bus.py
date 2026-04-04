@@ -72,7 +72,7 @@ def broadcast(event: dict):
             if rid:
                 event = {**event, "request_id": rid}
     except Exception:
-        pass
+        logging.getLogger(__name__).exception("Suppressed exception in event_bus.py")
     if _queue is None or not _initialized:
         _dropped += 1
         now = time.time()

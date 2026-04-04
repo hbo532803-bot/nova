@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 from typing import Any
 
 from backend.database import get_db
@@ -24,7 +25,7 @@ class ResultCollector:
             self.memory.put_json(mission_id, key, {"output": output})
         except Exception:
             # best effort; execution path must not be blocked
-            pass
+            logging.getLogger(__name__).exception("ResultCollector.store_task_output failed")
 
     def collect_outputs(self, *, mission_id: str | None = None, order_id: str | None = None) -> dict[str, Any]:
         resolved_mission_id = mission_id or self._resolve_mission_id(order_id)
