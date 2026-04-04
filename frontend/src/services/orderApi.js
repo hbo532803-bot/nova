@@ -1,4 +1,6 @@
-const API = "http://localhost:8000/api/order";
+import { API_BASE_URL } from "./apiConfig";
+
+const API = `${API_BASE_URL}/api/order`;
 
 async function request(path, options = {}) {
   const res = await fetch(`${API}${path}`, {

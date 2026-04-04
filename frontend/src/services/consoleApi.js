@@ -1,4 +1,6 @@
-const API = "http://localhost:8000";
+import { API_BASE_URL } from "./apiConfig";
+
+const API = API_BASE_URL;
 
 function token() {
   return localStorage.getItem("nova_token");

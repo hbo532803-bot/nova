@@ -44,13 +44,17 @@ export default function ProductPage() {
   async function submitPayment() {
     if (!order || !selectedPlan) return;
     setLoading(true);
+    setError("");
     try {
+      setPaymentStatus("processing");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setPaymentStatus("paid");
       setOrder((prev) => ({ ...prev, payment_status: "paid" }));
       await confirmOrder(order.order_id, selectedPlan);
       const status = await fetchOrderStatus(order.order_id);
       setOrderStatus(status);
     } catch (e) {
+      setPaymentStatus("unpaid");
       setError(e.message);
     } finally {
       setLoading(false);
@@ -75,7 +79,8 @@ export default function ProductPage() {
   }, [order?.order_id, paymentStatus]);
 
   const offers = order?.offers || [];
-  const recommended = useMemo(() => offers[1]?.tier || offers[0]?.tier || "STANDARD", [offers]);
+  const recommended = useMemo(() => String(offers[1]?.tier || offers[0]?.tier || "STANDARD").toUpperCase(), [offers]);
+  const selectedOffer = offers.find((offer) => String(offer?.tier || "").toUpperCase() === selectedPlan);
 
   const progressSteps = [
     { key: "planning", label: "Planning", doneAt: 20 },
@@ -87,12 +92,24 @@ export default function ProductPage() {
   const result = orderStatus?.result || null;
   const websiteLink = result?.website_url || result?.preview_url || result?.deployment_url || "";
 
+  const planPrice = Number(selectedOffer?.estimated_price || 1200);
+  const estimatedLeads = Math.max(20, Math.round(planPrice / 40));
+  const potentialRevenue = estimatedLeads * 250;
+  const growthPotential = potentialRevenue > 15000 ? "High" : potentialRevenue > 7000 ? "Medium" : "Early-stage";
+
   return (
     <main className="product-shell">
-      <section className="hero-card">
-        <p className="eyebrow">USER APP</p>
+      <section className="hero-card fade-in">
+        <div className="hero-top-row">
+          <p className="eyebrow">USER APP</p>
+          <div className="trust-chips">
+            <span>AI-generated strategy</span>
+            <span>Optimized for conversion</span>
+          </div>
+        </div>
+
         <h1>Describe what you want Nova to launch.</h1>
-        <p className="hero-copy">From idea to paid execution with one guided flow.</p>
+        <p className="hero-copy">From idea to paid execution with one guided conversion-focused flow.</p>
 
         <div className="suggestions-row">
           {SUGGESTIONS.map((item) => (
@@ -108,19 +125,28 @@ export default function ProductPage() {
           placeholder="Example: Launch a lead generation website + booking flow for roofing businesses in Dallas"
           className="input-box"
         />
+
         <button type="button" className="primary-btn" onClick={generatePlan} disabled={loading}>
-          {loading ? "Generating..." : "Generate Plan"}
+          {loading ? "Generating high-conversion plan..." : "Generate Plan"}
         </button>
+
         {error && <p className="error-text">{error}</p>}
       </section>
 
+      {loading && !order && (
+        <section className="card loading-card fade-in">
+          <h3>Preparing your offer stack...</h3>
+          <p>Analyzing service intent, packaging options, and estimated outcomes.</p>
+        </section>
+      )}
+
       {order && (
-        <section className="card-grid">
+        <section className="card-grid fade-in">
           <article className="card">
             <h3>Plan Summary</h3>
             <p><strong>Detected service:</strong> {order.service || "Unknown"}</p>
             <p><strong>Confidence:</strong> High</p>
-            <p><strong>Explanation:</strong> Nova mapped your input to packaged service offers and generated a scoped mission.</p>
+            <p><strong>Explanation:</strong> Nova translated your request into a market-ready launch plan with clear delivery tiers.</p>
           </article>
 
           <article className="card">
@@ -128,8 +154,9 @@ export default function ProductPage() {
             <div className="plan-grid">
               {offers.map((offer) => {
                 const tier = String(offer.tier || "").toUpperCase();
-                const isRecommended = tier === String(recommended).toUpperCase();
+                const isRecommended = tier === recommended;
                 const isSelected = selectedPlan === tier;
+
                 return (
                   <button
                     key={tier}
@@ -153,22 +180,29 @@ export default function ProductPage() {
 
           <article className="card">
             <h3>Payment</h3>
-            <p>Selected plan: <strong>{selectedPlan || "Choose a plan"}</strong></p>
-            <p>Payment status: <strong>{paymentStatus}</strong></p>
+            <p><strong>Plan:</strong> {selectedPlan || "Choose a plan"}</p>
+            <p><strong>Price:</strong> ${selectedOffer?.estimated_price || "-"}</p>
+            <p><strong>You get:</strong> {(PLAN_FEATURES[selectedPlan] || ["Select a plan to see deliverables"]).join(", ")}</p>
+            <p><strong>Payment status:</strong> {paymentStatus}</p>
+
             <button
               type="button"
               className="primary-btn"
               onClick={submitPayment}
-              disabled={!selectedPlan || loading || paymentStatus === "paid"}
+              disabled={!selectedPlan || loading || paymentStatus === "paid" || paymentStatus === "processing"}
             >
-              {paymentStatus === "paid" ? "Payment Completed" : "Pay & Start Execution"}
+              {paymentStatus === "processing"
+                ? "Processing payment..."
+                : paymentStatus === "paid"
+                  ? "Payment Completed"
+                  : "Pay & Start Execution"}
             </button>
           </article>
         </section>
       )}
 
       {orderStatus && (
-        <section className="card-grid">
+        <section className="card-grid fade-in">
           <article className="card">
             <h3>Execution Status</h3>
             <p><strong>Current:</strong> {orderStatus.status}</p>
@@ -182,7 +216,7 @@ export default function ProductPage() {
           </article>
 
           <article className="card">
-            <h3>Result View</h3>
+            <h2>Your system is ready</h2>
             {websiteLink ? (
               <>
                 <a className="secondary-btn" href={websiteLink} target="_blank" rel="noreferrer">Open Website Preview</a>
@@ -191,8 +225,46 @@ export default function ProductPage() {
             ) : (
               <p>Website preview will appear after deployment.</p>
             )}
-            <p><strong>Business summary:</strong> {result?.business_summary || result?.summary || "Pending result summary."}</p>
-            <p><strong>Leads info:</strong> {result?.leads_info || result?.leads || "Leads pipeline details will be listed here."}</p>
+
+            <h4>Business summary</h4>
+            <p>{result?.business_summary || result?.summary || "Your launch stack is configured and ready for conversion traffic."}</p>
+
+            <h4>What you can do next</h4>
+            <ul>
+              <li>Connect CRM and lead notifications.</li>
+              <li>Launch traffic from search/social channels.</li>
+              <li>Use split tests to improve conversion rate weekly.</li>
+            </ul>
+
+            <h4>Expected results</h4>
+            <p>Initial traction within 7-14 days after activation with measurable lead intent indicators.</p>
+
+            <h4>How this will generate leads</h4>
+            <p>Targeted traffic enters conversion-optimized pages, then automation qualifies and routes warm leads for follow-up.</p>
+          </article>
+
+          <article className="card value-card">
+            <h3>Value Projection</h3>
+            <div className="value-grid">
+              <div>
+                <p>Estimated leads/month</p>
+                <h4>{estimatedLeads}</h4>
+              </div>
+              <div>
+                <p>Potential revenue</p>
+                <h4>${potentialRevenue.toLocaleString()}</h4>
+              </div>
+              <div>
+                <p>Growth potential</p>
+                <h4>{growthPotential}</h4>
+              </div>
+            </div>
+
+            <div className="cta-row">
+              <button type="button" className="primary-btn">Get full setup</button>
+              <button type="button" className="secondary-btn">Run ads for this</button>
+              <button type="button" className="secondary-btn">Upgrade plan</button>
+            </div>
           </article>
         </section>
       )}

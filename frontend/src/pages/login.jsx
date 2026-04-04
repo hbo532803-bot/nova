@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../services/apiConfig";
 
 export default function Login() {
 
@@ -14,7 +15,7 @@ export default function Login() {
     formData.append("username",username);
     formData.append("password",password);
 
-    const res = await fetch("http://localhost:8000/api/login",{
+    const res = await fetch(`${API_BASE_URL}/api/login`,{
       method:"POST",
       headers:{
         "Content-Type":"application/x-www-form-urlencoded"
