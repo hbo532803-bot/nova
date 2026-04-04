@@ -4,7 +4,6 @@ import json
 from typing import Any, Dict, List, Optional
 
 from backend.database import get_db
-from backend.db_init import initialize_all_tables
 from backend.db_retry import run_db_write_with_retry
 
 
@@ -15,7 +14,7 @@ class WorkingMemoryStore:
     """
 
     def ensure(self) -> None:
-        initialize_all_tables(reset=False)
+        return None
 
     def put(self, mission_id: str, key: str, value: str) -> None:
         self.ensure()
@@ -73,4 +72,3 @@ class WorkingMemoryStore:
             return {"value": parsed, "created_at": str(row["created_at"])}
         except Exception:
             return {"value": raw, "created_at": str(row["created_at"])}
-

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -86,5 +87,5 @@ class CognitiveCycle:
         try:
             broadcast({"type": "log", "level": "info", "message": "CognitiveCycle updated"})
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in cognitive_cycle.py")
 
