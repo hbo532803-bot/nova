@@ -87,6 +87,15 @@ class DeliveryService:
                 "offer": str(business_intel.get("offer") or self._extract_first(task_outputs, ("offer", "package", "tier"))),
                 "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "icp"))),
                 "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization"))),
+            html = self._extract_html(task_outputs)
+            if not html:
+                html = self._fallback_website_html(task_outputs)
+            return {
+                "pages": max(1, self._extract_count(task_outputs, "page")),
+                "html": html,
+                "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Starter website + lead form",
+                "target_audience": self._extract_first(task_outputs, ("audience", "customer", "icp")) or "Small businesses validating demand",
+                "monetization": self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization")) or "Monthly retainer with optional setup fee",
                 "artifacts": task_outputs,
             }
         if kind == "leads":
@@ -98,6 +107,9 @@ class DeliveryService:
                 "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "icp"))),
                 "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("retainer", "pricing", "monetization"))),
                 "lead_strategy": list(marketing_intel.get("lead_strategy") or []),
+                "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Lead generation starter package",
+                "target_audience": self._extract_first(task_outputs, ("audience", "customer", "icp")) or "B2B service businesses",
+                "monetization": self._extract_first(task_outputs, ("retainer", "pricing", "monetization")) or "Pay-per-qualified-lead or monthly retainer",
                 "artifacts": task_outputs,
             }
         if kind == "automation":
@@ -114,6 +126,15 @@ class DeliveryService:
             "offer": str(business_intel.get("offer") or self._extract_first(task_outputs, ("offer", "package", "tier"))),
             "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "icp"))),
             "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization"))),
+                "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Workflow automation implementation",
+                "target_audience": self._extract_first(task_outputs, ("audience", "customer", "team")) or "Operators with repetitive manual workflows",
+                "monetization": self._extract_first(task_outputs, ("retainer", "pricing", "monetization")) or "One-time setup + maintenance plan",
+                "artifacts": task_outputs,
+            }
+        return {
+            "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Consulting strategy sprint",
+            "target_audience": self._extract_first(task_outputs, ("audience", "customer", "icp")) or "Founders needing validated growth direction",
+            "monetization": self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization")) or "Fixed-fee sprint then monthly advisory",
             "artifacts": task_outputs,
         }
 
