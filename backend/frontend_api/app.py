@@ -1,4 +1,5 @@
-from fastapi import FastAPI, WebSocket
+import logging
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -33,16 +34,13 @@ app = FastAPI(title="Nova AI")
 # CORS
 # --------------------------------------
 
-raw_origins = os.getenv(
-    "NOVA_CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:4173,http://localhost:8000",
-)
-allow_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+raw_origins = os.getenv("NOVA_CORS_ORIGINS", "*").strip()
+allow_origins = ["*"] if raw_origins == "*" else [o.strip() for o in raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -61,13 +59,26 @@ _AUTH_EXEMPT = {
     "/api/login",
     "/api/status",
     "/api/system/health",
+    "/api/leads",
+    "/api/landing",
+    "/api/checkout/simulate",
+    "/api/order/create",
+    "/api/order/confirm",
 }
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/api") and path not in _AUTH_EXEMPT:
+        if request.method.upper() == "OPTIONS":
+            # CORS preflight must bypass auth to prevent browser-side 401 on preflight.
+            return await call_next(request)
+        if (
+            path.startswith("/api")
+            and path not in _AUTH_EXEMPT
+            and not path.startswith("/api/landing/")
+            and not path.startswith("/api/order/status/")
+        ):
             auth = request.headers.get("authorization") or ""
             token = ""
             if auth.lower().startswith("bearer "):
@@ -124,6 +135,7 @@ app.add_middleware(RequestIdMiddleware)
 # ======================================
 
 scheduler = None
+dispatcher_task = None
 
 
 @app.on_event("startup")
@@ -146,7 +158,8 @@ async def startup():
 
     event_bus.init_event_bus()
 
-    asyncio.create_task(event_bus.event_dispatcher())
+    global dispatcher_task
+    dispatcher_task = asyncio.create_task(event_bus.event_dispatcher())
 
     # -------------------------
     # ECONOMIC ENGINE
@@ -160,6 +173,15 @@ async def startup():
     scheduler.start()
 
     print("✅ Nova Started")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global scheduler, dispatcher_task
+    if scheduler:
+        scheduler.stop()
+    if dispatcher_task and not dispatcher_task.done():
+        dispatcher_task.cancel()
 
 
 # ======================================
@@ -182,9 +204,17 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             await ws.receive_text()
-
-    except Exception:
+    except WebSocketDisconnect:
+        # Normal close path from client/browser.
         pass
+    except ConnectionResetError:
+        # Common transport close on some clients/OS stacks (e.g. WinError 10054).
+        pass
+    except Exception:
+        logging.getLogger(__name__).exception("websocket_endpoint unexpected failure")
 
     finally:
-        event_bus.unregister(ws)
+        try:
+            event_bus.unregister(ws)
+        except Exception:
+            logging.getLogger(__name__).warning("websocket unregister failed during close", exc_info=True)

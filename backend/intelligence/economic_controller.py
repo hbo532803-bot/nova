@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from backend.database import get_db
 from backend.intelligence.confidence_engine import ConfidenceEngine
@@ -366,11 +367,11 @@ class EconomicController:
                 try:
                     conn.rollback()
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in economic_controller.py")
             raise
         finally:
             if owned:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in economic_controller.py")
