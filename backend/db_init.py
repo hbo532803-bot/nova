@@ -389,6 +389,29 @@ def initialize_all_tables(reset: bool = False):
             )
             """)
 
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customer_orders (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                user_input TEXT NOT NULL,
+                service TEXT,
+                requirement_json TEXT,
+                offers_json TEXT,
+                selected_plan TEXT,
+                command_text TEXT,
+                status TEXT DEFAULT 'PENDING',
+                progress INTEGER DEFAULT 0,
+                execution_result TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_customer_orders_status_created
+            ON customer_orders(status, created_at)
+            """)
+
             conn.commit()
 
         except Exception as e:

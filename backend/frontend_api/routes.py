@@ -40,6 +40,8 @@ from backend.services.result_collector import ResultCollector
 from backend.services.delivery_service import DeliveryService
 from backend.intelligence.traffic_engine import TrafficEngine
 import logging
+import threading
+import ast
 
 router = APIRouter()
 
@@ -49,6 +51,80 @@ _requirement_engine = RequirementEngineService()
 _result_collector = ResultCollector()
 _delivery_service = DeliveryService()
 _traffic_engine = TrafficEngine()
+_order_logger = logging.getLogger(__name__)
+
+
+def _safe_json_parse(raw):
+    if isinstance(raw, (dict, list)):
+        return raw
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            return parser(text)
+        except Exception:
+            continue
+    return {"raw": text}
+
+
+def _update_order(order_id: str, **fields):
+    if not fields:
+        return
+    pairs = list(fields.items()) + [("updated_at", datetime.utcnow())]
+    set_clause = ", ".join([f"{k}=?" for k, _ in pairs])
+    values = [v for _, v in pairs] + [order_id]
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE customer_orders SET {set_clause} WHERE id=?", values)
+        conn.commit()
+
+
+def _extract_mission_id(execution_result: dict) -> str:
+    if not isinstance(execution_result, dict):
+        return ""
+    if execution_result.get("mission_id"):
+        return str(execution_result.get("mission_id"))
+    decision = execution_result.get("decision") or {}
+    if isinstance(decision, dict) and decision.get("mission_id"):
+        return str(decision.get("mission_id"))
+    nested = execution_result.get("result") or {}
+    if isinstance(nested, dict) and nested.get("mission_id"):
+        return str(nested.get("mission_id"))
+    return ""
+
+
+def _run_order_execution(order_id: str, command: str):
+    try:
+        _update_order(order_id, status="RUNNING", progress=35)
+        execution_result = get_nova_core().handle_command(command)
+        mission_id = _extract_mission_id(execution_result)
+
+        final_result = None
+        if mission_id:
+            aggregated = _result_collector.collect_outputs(mission_id=mission_id)
+            final_result = _delivery_service.build_final_result(aggregated, type_hint=command)
+
+        payload = {
+            "execution_result": execution_result,
+            "final_result": final_result,
+            "mission_id": mission_id,
+        }
+        _update_order(
+            order_id,
+            status="COMPLETED",
+            progress=100,
+            mission_id=mission_id or None,
+            execution_result=json.dumps(payload),
+        )
+    except Exception:
+        _order_logger.exception("order execution failed")
+        _update_order(
+            order_id,
+            status="COMPLETED",
+            progress=100,
+            execution_result=json.dumps({"error": "order_execution_failed", "final_result": None}),
+        )
 
 # -------------------------------------------------
 # Utility
@@ -280,11 +356,132 @@ def requirement_intake(payload: dict, admin=Depends(get_current_admin)):
     return response
 
 
+@router.post("/order/create")
+def order_create(payload: dict):
+    user_input = (payload.get("input") or "").strip()
+    if not user_input:
+        raise HTTPException(status_code=400, detail="input is required")
+
+    details = payload.get("details") or {}
+    requirement = _requirement_engine.build_requirement(user_input=user_input, provided=details)
+    offers = requirement.get("details", {}).get("offers", [])
+
+    order_id = str(uuid.uuid4())
+    mission_id = f"order-{order_id}"
+    estimated_pricing = {str(o.get("tier")): o.get("estimated_price") for o in offers if o.get("tier")}
+    execution_plan_preview = [
+        {
+            "tier": o.get("tier"),
+            "timeline": (o.get("execution_scope") or {}).get("timeline"),
+            "deliverables": (o.get("execution_scope") or {}).get("deliverables", []),
+        }
+        for o in offers
+    ]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO customer_orders (
+                id, mission_id, user_input, service, requirement_json, offers_json, status, progress, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 10, ?)
+            """,
+            (
+                order_id,
+                mission_id,
+                user_input,
+                requirement.get("service"),
+                json.dumps(requirement),
+                json.dumps(offers),
+                datetime.utcnow(),
+            ),
+        )
+        conn.commit()
+
+    return {
+        "order_id": order_id,
+        "mission_id": mission_id,
+        "service": requirement.get("service"),
+        "offers": offers,
+        "estimated_pricing": estimated_pricing,
+        "execution_plan_preview": execution_plan_preview,
+    }
+
+
+@router.post("/order/confirm")
+def order_confirm(payload: dict):
+    order_id = str(payload.get("order_id") or "").strip()
+    selected_plan = str(payload.get("selected_plan") or "").strip().upper()
+    if not order_id:
+        raise HTTPException(status_code=400, detail="order_id is required")
+    if selected_plan not in {"BASIC", "STANDARD", "PREMIUM"}:
+        raise HTTPException(status_code=400, detail="selected_plan must be BASIC/STANDARD/PREMIUM")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM customer_orders WHERE id=?", (order_id,))
+        row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    status = str(row["status"] or "")
+    if status in {"RUNNING", "COMPLETED"}:
+        raise HTTPException(status_code=409, detail=f"order already {status.lower()}")
+
+    requirement = _safe_json_parse(row["requirement_json"])
+    offers = _safe_json_parse(row["offers_json"])
+    offer_tiers = {str(o.get("tier")).upper() for o in offers if isinstance(o, dict)}
+    if selected_plan not in offer_tiers:
+        raise HTTPException(status_code=400, detail=f"selected_plan not offered: {selected_plan}")
+
+    service = str((requirement or {}).get("service") or row["service"] or "consultation")
+    goal = str((requirement or {}).get("goal") or row["user_input"] or "").strip()
+    command = f"run mission {service}: {goal} [{selected_plan}]"
+
+    _update_order(order_id, selected_plan=selected_plan, command_text=command, status="PENDING", progress=20)
+    threading.Thread(target=_run_order_execution, args=(order_id, command), daemon=True).start()
+
+    return {"ok": True, "order_id": order_id, "status": "RUNNING", "selected_plan": selected_plan}
+
+
+@router.get("/order/status/{id}")
+def order_status(id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM customer_orders WHERE id=?", (id,))
+        row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    result_payload = _safe_json_parse(row["execution_result"])
+    return {
+        "order_id": str(row["id"]),
+        "mission_id": str(row["mission_id"] or ""),
+        "status": str(row["status"] or "PENDING").lower(),
+        "progress": int(row["progress"] or 0),
+        "selected_plan": row["selected_plan"],
+        "result": result_payload if str(row["status"] or "").upper() in {"COMPLETED"} else None,
+    }
+
+
 @router.get("/order/result/{id}")
 def order_result(id: str, admin=Depends(get_current_admin)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT mission_id, execution_result FROM customer_orders WHERE id=?", (id,))
+        order_row = cursor.fetchone()
+    if order_row:
+        mission_id = str(order_row["mission_id"] or "")
+        if mission_id:
+            aggregated = _result_collector.collect_outputs(mission_id=mission_id)
+            return _delivery_service.build_final_result(aggregated)
+        stored = _safe_json_parse(order_row["execution_result"])
+        if isinstance(stored, dict) and stored.get("final_result"):
+            return stored["final_result"]
+
     aggregated = _result_collector.collect_outputs(order_id=id)
-    mission_id = aggregated.get("mission_id")
-    if not mission_id:
+    resolved_mission_id = aggregated.get("mission_id")
+    if not resolved_mission_id:
         # id may already be a mission_id
         aggregated = _result_collector.collect_outputs(mission_id=id)
     return _delivery_service.build_final_result(aggregated)

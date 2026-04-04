@@ -65,6 +65,8 @@ _AUTH_EXEMPT = {
     "/api/leads",
     "/api/landing",
     "/api/checkout/simulate",
+    "/api/order/create",
+    "/api/order/confirm",
 }
 
 
@@ -74,7 +76,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.method.upper() == "OPTIONS":
             # CORS preflight must bypass auth to prevent browser-side 401 on preflight.
             return await call_next(request)
-        if path.startswith("/api") and path not in _AUTH_EXEMPT and not path.startswith("/api/landing/"):
+        if (
+            path.startswith("/api")
+            and path not in _AUTH_EXEMPT
+            and not path.startswith("/api/landing/")
+            and not path.startswith("/api/order/status/")
+        ):
             auth = request.headers.get("authorization") or ""
             token = ""
             if auth.lower().startswith("bearer "):
