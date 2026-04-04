@@ -34,16 +34,13 @@ app = FastAPI(title="Nova AI")
 # CORS
 # --------------------------------------
 
-raw_origins = os.getenv(
-    "NOVA_CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:4173,http://localhost:8000",
-)
-allow_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+raw_origins = os.getenv("NOVA_CORS_ORIGINS", "*").strip()
+allow_origins = ["*"] if raw_origins == "*" else [o.strip() for o in raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -217,4 +214,7 @@ async def websocket_endpoint(ws: WebSocket):
         logging.getLogger(__name__).exception("websocket_endpoint unexpected failure")
 
     finally:
-        event_bus.unregister(ws)
+        try:
+            event_bus.unregister(ws)
+        except Exception:
+            logging.getLogger(__name__).warning("websocket unregister failed during close", exc_info=True)

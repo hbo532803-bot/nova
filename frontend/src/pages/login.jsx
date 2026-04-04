@@ -2,63 +2,75 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../services/apiConfig";
 
-export default function Login() {
+const API = (import.meta.env.VITE_API_BASE || "http://localhost:8000").replace(/\/$/, "");
 
-  const [username,setUsername] = useState("");
-  const [password,setPassword] = useState("");
+export default function Login() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
 
-  async function login(){
+  async function login() {
+    setError("");
+    if (!username.trim() || !password.trim()) {
+      setError("Username and password are required.");
+      return;
+    }
 
     const formData = new URLSearchParams();
-    formData.append("username",username);
-    formData.append("password",password);
+    formData.append("username", username);
+    formData.append("password", password);
 
-    const res = await fetch(`${API_BASE_URL}/api/login`,{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/x-www-form-urlencoded"
-      },
-      body:formData
-    });
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/api/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData,
+      });
 
-    const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-    if(data.access_token){
+      if (!res.ok || !data.access_token) {
+        setError(data.detail || "Login failed");
+        return;
+      }
 
-      localStorage.setItem("nova_token",data.access_token);
-
+      localStorage.setItem("nova_token", data.access_token);
       navigate("/dashboard");
-    }
-    else{
-      alert("Login failed");
+    } catch {
+      setError("Unable to connect to Nova backend.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  return(
-
-    <div style={{padding:40}}>
-
+  return (
+    <div style={{ padding: 40 }}>
       <h1>NOVA LOGIN</h1>
 
-      <input
-      placeholder="username"
-      onChange={(e)=>setUsername(e.target.value)}
-      />
+      <input placeholder="username" onChange={(e) => setUsername(e.target.value)} />
 
-      <br/><br/>
+      <br />
+      <br />
 
       <input
-      type="password"
-      placeholder="password"
-      onChange={(e)=>setPassword(e.target.value)}
+        type="password"
+        placeholder="password"
+        onChange={(e) => setPassword(e.target.value)}
       />
 
-      <br/><br/>
+      <br />
+      <br />
 
-      <button onClick={login}>Login</button>
-
+      <button onClick={login} disabled={loading}>
+        {loading ? "Signing in..." : "Login"}
+      </button>
+      {error && <p style={{ color: "#ef4444", marginTop: 12 }}>{error}</p>}
     </div>
-  )
+  );
 }
