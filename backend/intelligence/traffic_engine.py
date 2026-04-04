@@ -101,6 +101,12 @@ class TrafficEngine:
                     """,
                     (mission_id,),
                 )
+                row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT COALESCE(SUM(amount),0) AS real_revenue FROM revenue_events WHERE mission_id=? AND status='PAID'",
+                    (mission_id,),
+                )
+                revenue_row = cursor.fetchone()
             else:
                 cursor.execute("SELECT COUNT(*) AS n FROM leads")
                 total_leads = int(cursor.fetchone()["n"])
@@ -113,19 +119,44 @@ class TrafficEngine:
                     FROM traffic_metrics
                     """
                 )
-            row = cursor.fetchone()
+                row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT COALESCE(SUM(amount),0) AS real_revenue FROM revenue_events WHERE status='PAID'"
+                )
+                revenue_row = cursor.fetchone()
 
         impressions = int(row["impressions"] or 0)
         clicks = int(row["clicks"] or 0)
         estimated_revenue = float(row["estimated_revenue"] or 0.0)
+        real_revenue = float((revenue_row["real_revenue"] if revenue_row else 0.0) or 0.0)
         simulated_leads = int(row["simulated_leads"] or 0)
         conversion_rate = round((total_leads / max(1, clicks)) * 100.0, 2)
+        engagement_rate = round((clicks / max(1, impressions)) * 100.0, 2)
         return {
             "mission_id": mission_id,
             "leads_count": total_leads,
             "simulated_leads": simulated_leads,
             "impressions": impressions,
             "clicks": clicks,
+            "engagement_rate_percent": engagement_rate,
             "conversion_rate_percent": conversion_rate,
             "estimated_revenue": round(estimated_revenue, 2),
+            "real_revenue": round(real_revenue, 2),
         }
+
+    def record_visit(self, *, mission_id: str, source: str = "landing", referral: str = "") -> None:
+        def _write(conn):
+            cursor = conn.cursor()
+            src = source if not referral else f"{source}:{referral}"
+            cursor.execute(
+                """
+                INSERT INTO traffic_metrics
+                (mission_id, source, impressions, clicks, leads, conversion_rate, lead_value, estimated_revenue)
+                VALUES (?, ?, 1, 1, 0, 0, 0, 0)
+                """,
+                (mission_id, src),
+            )
+            conn.commit()
+            return None
+
+        run_db_write_with_retry("traffic_metrics.record_visit", _write)

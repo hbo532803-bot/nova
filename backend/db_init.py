@@ -38,6 +38,7 @@ def initialize_all_tables(reset: bool = False):
                 DROP TABLE IF EXISTS agent_tasks;
                 DROP TABLE IF EXISTS leads;
                 DROP TABLE IF EXISTS traffic_metrics;
+                DROP TABLE IF EXISTS revenue_events;
 
                 """)
 
@@ -372,6 +373,18 @@ def initialize_all_tables(reset: bool = False):
                 lead_value REAL DEFAULT 200,
                 estimated_revenue REAL DEFAULT 0,
                 experiment_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS revenue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                lead_id INTEGER,
+                amount REAL DEFAULT 0,
+                status TEXT DEFAULT 'PENDING',
+                source TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
             """)

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import HTMLResponse
 import uuid
 from datetime import datetime, timedelta
 
@@ -21,6 +22,9 @@ from backend.intelligence.playbooks.library import list_playbooks
 from backend.intelligence.experiment_analytics import ExperimentAnalytics
 from backend.system.stability import SystemStability
 import json
+from pathlib import Path
+import os
+import requests
 
 from backend.tools.rollback_manager import rollback_last
 
@@ -311,7 +315,57 @@ def capture_lead(payload: dict):
         conn.commit()
 
     logging.getLogger(__name__).info("NEW_LEAD_CAPTURED", extra={"lead_id": lead_id, "mission_id": mission_id, "source": source})
-    return {"ok": True, "lead_id": lead_id, "hook_ready": True}
+    webhook = (os.getenv("NOVA_LEAD_WEBHOOK") or "").strip()
+    hook_sent = False
+    if webhook:
+        try:
+            requests.post(
+                webhook,
+                json={"lead_id": lead_id, "mission_id": mission_id, "name": name, "email": email, "phone": phone, "source": source},
+                timeout=3,
+            )
+            hook_sent = True
+        except Exception:
+            logging.getLogger(__name__).exception("lead webhook send failed")
+    return {"ok": True, "lead_id": lead_id, "hook_ready": True, "hook_sent": hook_sent}
+
+
+@router.get("/landing/{mission_id}", response_class=HTMLResponse)
+def mission_landing(mission_id: str, ref: str | None = None):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM system_settings WHERE key=?", (f"mission_site_{mission_id}",))
+        row = cursor.fetchone()
+    if not row or not row["value"]:
+        raise HTTPException(status_code=404, detail="mission landing not found")
+    path = Path(str(row["value"]))
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="landing file missing")
+    _traffic_engine.record_visit(mission_id=mission_id, source="landing", referral=str(ref or ""))
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
+@router.post("/checkout/simulate")
+def checkout_simulate(payload: dict):
+    mission_id = (payload.get("mission_id") or "").strip()
+    lead_id = payload.get("lead_id")
+    amount = float(payload.get("amount") or 499.0)
+    source = (payload.get("source") or "landing_checkout").strip()
+    if not mission_id:
+        raise HTTPException(status_code=400, detail="mission_id is required")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO revenue_events (mission_id, lead_id, amount, status, source)
+            VALUES (?, ?, ?, 'PAID', ?)
+            """,
+            (mission_id, int(lead_id) if lead_id else None, amount, source),
+        )
+        event_id = int(cursor.lastrowid)
+        conn.commit()
+    return {"ok": True, "event_id": event_id, "mission_id": mission_id, "amount": amount, "status": "PAID"}
 
 
 @router.post("/traffic/simulate")
