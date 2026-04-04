@@ -87,15 +87,15 @@ class DeliveryService:
                 "offer": str(business_intel.get("offer") or self._extract_first(task_outputs, ("offer", "package", "tier"))),
                 "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "icp"))),
                 "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization"))),
-            html = self._extract_html(task_outputs)
-            if not html:
-                html = self._fallback_website_html(task_outputs)
-            return {
-                "pages": max(1, self._extract_count(task_outputs, "page")),
-                "html": html,
-                "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Starter website + lead form",
-                "target_audience": self._extract_first(task_outputs, ("audience", "customer", "icp")) or "Small businesses validating demand",
-                "monetization": self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization")) or "Monthly retainer with optional setup fee",
+                "pricing_idea": business_intel.get("pricing_idea") or {},
+                "lead_strategy": list(marketing_intel.get("lead_strategy") or []),
+                "differentiation": str(
+                    marketing_intel.get("differentiation")
+                    or website_intel.get("differentiation")
+                    or (research_intel.get("differentiation") if isinstance(research_intel, dict) else "")
+                    or ""
+                ),
+                "competitors": list(research_intel.get("competitors") or []),
                 "artifacts": task_outputs,
             }
         if kind == "leads":
@@ -106,10 +106,9 @@ class DeliveryService:
                 "offer": str(business_intel.get("offer") or self._extract_first(task_outputs, ("offer", "package", "tier"))),
                 "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "icp"))),
                 "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("retainer", "pricing", "monetization"))),
+                "pricing_idea": business_intel.get("pricing_idea") or {},
                 "lead_strategy": list(marketing_intel.get("lead_strategy") or []),
-                "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Lead generation starter package",
-                "target_audience": self._extract_first(task_outputs, ("audience", "customer", "icp")) or "B2B service businesses",
-                "monetization": self._extract_first(task_outputs, ("retainer", "pricing", "monetization")) or "Pay-per-qualified-lead or monthly retainer",
+                "differentiation": str(marketing_intel.get("differentiation") or ""),
                 "artifacts": task_outputs,
             }
         if kind == "automation":
@@ -119,6 +118,8 @@ class DeliveryService:
                 "offer": str(business_intel.get("offer") or self._extract_first(task_outputs, ("offer", "package", "tier"))),
                 "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "team"))),
                 "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("retainer", "pricing", "monetization"))),
+                "pricing_idea": business_intel.get("pricing_idea") or {},
+                "funnel_idea": str(business_intel.get("funnel_idea") or ""),
                 "artifacts": task_outputs,
             }
         business_intel = intel.get("business") or {}
@@ -126,15 +127,8 @@ class DeliveryService:
             "offer": str(business_intel.get("offer") or self._extract_first(task_outputs, ("offer", "package", "tier"))),
             "target_audience": str(business_intel.get("target_audience") or self._extract_first(task_outputs, ("audience", "customer", "icp"))),
             "monetization": str(business_intel.get("monetization") or self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization"))),
-                "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Workflow automation implementation",
-                "target_audience": self._extract_first(task_outputs, ("audience", "customer", "team")) or "Operators with repetitive manual workflows",
-                "monetization": self._extract_first(task_outputs, ("retainer", "pricing", "monetization")) or "One-time setup + maintenance plan",
-                "artifacts": task_outputs,
-            }
-        return {
-            "offer": self._extract_first(task_outputs, ("offer", "package", "tier")) or "Consulting strategy sprint",
-            "target_audience": self._extract_first(task_outputs, ("audience", "customer", "icp")) or "Founders needing validated growth direction",
-            "monetization": self._extract_first(task_outputs, ("subscription", "pricing", "retainer", "monetization")) or "Fixed-fee sprint then monthly advisory",
+            "pricing_idea": business_intel.get("pricing_idea") or {},
+            "funnel_idea": str(business_intel.get("funnel_idea") or ""),
             "artifacts": task_outputs,
         }
 
@@ -247,6 +241,9 @@ class DeliveryService:
             headline = str(output.get("headline") or "").strip()
             offer = str(output.get("offer") or "").strip()
             audience = str(output.get("target_audience") or "").strip()
+            differentiation = str(output.get("differentiation") or "").strip()
+            pricing = output.get("pricing_idea") or {}
+            lead_strategy = output.get("lead_strategy") or []
             if pages <= 0:
                 return {"ok": False, "error": "pages == 0"}
             if len(re.sub(r"<[^>]+>", " ", html).strip()) < 120:
@@ -259,6 +256,12 @@ class DeliveryService:
                 return {"ok": False, "error": "website missing business context"}
             if headline.lower() in {"launch faster with nova", "nova delivery"}:
                 return {"ok": False, "error": "website headline is generic"}
+            if not differentiation or len(differentiation.split()) < 5:
+                return {"ok": False, "error": "missing differentiation"}
+            if not isinstance(pricing, dict) or not pricing:
+                return {"ok": False, "error": "missing pricing intelligence"}
+            if not isinstance(lead_strategy, list) or len(lead_strategy) < 2:
+                return {"ok": False, "error": "missing lead strategy"}
             return {"ok": True}
 
         artifacts = output.get("artifacts") or []
@@ -272,4 +275,9 @@ class DeliveryService:
                 return {"ok": False, "error": f"invalid {field}"}
             if "generic" in val:
                 return {"ok": False, "error": f"generic {field}"}
+        pricing = output.get("pricing_idea")
+        if pricing is not None and pricing == {}:
+            return {"ok": False, "error": "missing pricing intelligence"}
+        if "differentiation" in output and not str(output.get("differentiation") or "").strip():
+            return {"ok": False, "error": "missing differentiation"}
         return {"ok": True}
