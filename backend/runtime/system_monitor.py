@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 from backend.frontend_api.event_bus import broadcast
@@ -21,7 +22,7 @@ class SystemMonitor:
 
         except Exception:
 
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in system_monitor.py")
 
         return 0
 

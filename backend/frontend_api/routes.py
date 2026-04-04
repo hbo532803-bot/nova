@@ -34,6 +34,8 @@ from backend.nova import Nova
 from backend.services.requirement_engine import RequirementEngineService
 from backend.services.result_collector import ResultCollector
 from backend.services.delivery_service import DeliveryService
+from backend.intelligence.traffic_engine import TrafficEngine
+import logging
 
 router = APIRouter()
 
@@ -42,6 +44,7 @@ PENDING_DIFF = {}
 _requirement_engine = RequirementEngineService()
 _result_collector = ResultCollector()
 _delivery_service = DeliveryService()
+_traffic_engine = TrafficEngine()
 
 # -------------------------------------------------
 # Utility
@@ -281,6 +284,58 @@ def order_result(id: str, admin=Depends(get_current_admin)):
         # id may already be a mission_id
         aggregated = _result_collector.collect_outputs(mission_id=id)
     return _delivery_service.build_final_result(aggregated)
+
+
+@router.post("/leads")
+def capture_lead(payload: dict):
+    name = (payload.get("name") or "").strip()
+    email = (payload.get("email") or "").strip()
+    phone = (payload.get("phone") or "").strip()
+    source = (payload.get("source") or "website_form").strip()
+    mission_id = (payload.get("mission_id") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    if not email and not phone:
+        raise HTTPException(status_code=400, detail="email or phone is required")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO leads (mission_id, name, email, phone, source)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (mission_id, name, email, phone, source),
+        )
+        lead_id = int(cursor.lastrowid)
+        conn.commit()
+
+    logging.getLogger(__name__).info("NEW_LEAD_CAPTURED", extra={"lead_id": lead_id, "mission_id": mission_id, "source": source})
+    return {"ok": True, "lead_id": lead_id, "hook_ready": True}
+
+
+@router.post("/traffic/simulate")
+def simulate_traffic(payload: dict, admin=Depends(get_current_admin)):
+    mission_id = (payload.get("mission_id") or "").strip()
+    source = (payload.get("source") or "google_ads").strip()
+    if not mission_id:
+        raise HTTPException(status_code=400, detail="mission_id is required")
+    result = _traffic_engine.simulate(
+        mission_id=mission_id,
+        source=source,
+        impressions=int(payload.get("impressions") or 1000),
+        ctr=float(payload.get("ctr") or 0.03),
+        conversion_rate=float(payload.get("conversion_rate") or 0.12),
+        lead_value=float(payload.get("lead_value") or 200.0),
+        experiment_id=int(payload.get("experiment_id")) if payload.get("experiment_id") else None,
+        scale_threshold=int(payload.get("scale_threshold") or 20),
+    )
+    return result
+
+
+@router.get("/metrics/revenue")
+def revenue_metrics(mission_id: str | None = None, admin=Depends(get_current_admin)):
+    return _traffic_engine.dashboard_metrics(mission_id=mission_id)
 
 
 # -------------------------------------------------
