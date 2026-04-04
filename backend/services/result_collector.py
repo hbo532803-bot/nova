@@ -42,7 +42,11 @@ class ResultCollector:
 
         for row in rows:
             key = str(row.get("key") or "")
-            if not key.startswith("action:") and ":execution" not in key:
+            if (
+                not key.startswith("action:")
+                and ":execution" not in key
+                and ":proposal" not in key
+            ):
                 continue
             parsed = self._safe_parse(row.get("value"))
             output = parsed.get("output") if isinstance(parsed, dict) and "output" in parsed else parsed
