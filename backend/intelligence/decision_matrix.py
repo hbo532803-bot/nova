@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Literal, Optional
 
@@ -95,7 +96,7 @@ class DecisionMatrix:
                     # When long-term success is dropping, require more learning value to proceed.
                     learning_value = max(learning_value, 7)
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in decision_matrix.py")
 
         risk_level: RiskLevel
         if "sandbox_shell" in steps or "deploy" in steps:
@@ -150,7 +151,7 @@ class DecisionMatrix:
                         learning_value = max(learning_value, 7)
 
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in decision_matrix.py")
 
         # Explicit risk override if provided.
         risk_level = str(hints.get("risk_level", risk_level)).upper()  # type: ignore[assignment]

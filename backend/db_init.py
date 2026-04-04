@@ -2,7 +2,6 @@ from backend.database import get_db
 
 
 def initialize_all_tables(reset: bool = False):
-
     with get_db() as conn:
         cursor = conn.cursor()
 

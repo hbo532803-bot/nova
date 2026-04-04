@@ -2,7 +2,6 @@ import json
 import re
 from backend.llm import think
 from backend.database import get_db
-from backend.db_init import initialize_all_tables
 from backend.db_retry import run_db_write_with_retry
 
 
@@ -109,10 +108,6 @@ Format:
     # Store in DB
     # -------------------------
     def store_experiment(self, experiment):
-
-      # Schema is owned by db_init; map legacy fields into the current table.
-      initialize_all_tables(reset=False)
-
       name = str(experiment.get("idea") or "")
       exp_type = str(experiment.get("model_type") or "")
       score = int(experiment.get("internal_score") or 0)
