@@ -22,9 +22,10 @@ class DeploymentRouter:
     def deploy(self, result: dict[str, Any]) -> dict[str, Any]:
         result_type = str(result.get("type") or "generic").lower()
         output = result.get("output") or {}
+        mission_id = str((result.get("meta") or {}).get("mission_id") or "")
 
         if result_type == "website":
-            return self.website.deploy(output)
+            return self.website.deploy(output, mission_id=mission_id)
 
         if result_type == "leads":
             return self.file_exporter.export(output, preferred_format="csv")

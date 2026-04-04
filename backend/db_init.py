@@ -2,7 +2,6 @@ from backend.database import get_db
 
 
 def initialize_all_tables(reset: bool = False):
-
     with get_db() as conn:
         cursor = conn.cursor()
 
@@ -37,6 +36,9 @@ def initialize_all_tables(reset: bool = False):
                 DROP TABLE IF EXISTS nova_commands;
                 DROP TABLE IF EXISTS audit_log;
                 DROP TABLE IF EXISTS agent_tasks;
+                DROP TABLE IF EXISTS leads;
+                DROP TABLE IF EXISTS traffic_metrics;
+                DROP TABLE IF EXISTS revenue_events;
 
                 """)
 
@@ -336,6 +338,53 @@ def initialize_all_tables(reset: bool = False):
                 target TEXT,
                 payload TEXT,
                 ip TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            # ================= REVENUE EXECUTION =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                name TEXT NOT NULL,
+                email TEXT,
+                phone TEXT,
+                source TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_leads_mission_created
+            ON leads(mission_id, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                source TEXT,
+                impressions INTEGER DEFAULT 0,
+                clicks INTEGER DEFAULT 0,
+                leads INTEGER DEFAULT 0,
+                conversion_rate REAL DEFAULT 0,
+                lead_value REAL DEFAULT 200,
+                estimated_revenue REAL DEFAULT 0,
+                experiment_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS revenue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                lead_id INTEGER,
+                amount REAL DEFAULT 0,
+                status TEXT DEFAULT 'PENDING',
+                source TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
             """)
