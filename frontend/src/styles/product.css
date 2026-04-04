@@ -1,0 +1,66 @@
+.product-shell {
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #172554, #020617 60%);
+  color: #e2e8f0;
+  padding: 32px;
+  display: grid;
+  gap: 18px;
+}
+
+.hero-card,
+.card {
+  background: rgba(2, 6, 23, 0.88);
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.landing-card {
+  max-width: 860px;
+  margin: 48px auto;
+}
+
+.eyebrow { color: #38bdf8; margin-bottom: 10px; font-size: 12px; letter-spacing: 1px; }
+.hero-copy { color: #94a3b8; margin: 12px 0 18px; max-width: 740px; }
+
+.input-box {
+  width: 100%;
+  min-height: 140px;
+  background: #0b1220;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.primary-btn,
+.secondary-btn,
+.chip {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.primary-btn { background: #2563eb; color: white; }
+.secondary-btn { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+.chip { background: #0f172a; border-color: #1e293b; color: #cbd5e1; margin-right: 10px; margin-bottom: 10px; }
+
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.plan-card { text-align: left; position: relative; background: #0b1220; color: #e2e8f0; border: 1px solid #1e293b; border-radius: 12px; padding: 14px; }
+.plan-card.recommended { border-color: #38bdf8; }
+.plan-card.selected { outline: 2px solid #2563eb; }
+.badge { position: absolute; top: 8px; right: 10px; font-size: 11px; color: #38bdf8; }
+.price { font-size: 24px; font-weight: 700; margin: 8px 0; }
+
+.step-list { display: grid; gap: 8px; margin-top: 10px; }
+.step { background: #0b1220; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 10px; opacity: 0.7; }
+.step.done { border-color: #10b981; color: #10b981; opacity: 1; }
+
+.preview-frame { width: 100%; height: 220px; border: 1px solid #1e293b; border-radius: 10px; margin-top: 10px; background: #0b1220; }
+
+.error-text { color: #fca5a5; margin-top: 8px; }
+.hero-actions { display: flex; gap: 10px; margin-top: 16px; }
