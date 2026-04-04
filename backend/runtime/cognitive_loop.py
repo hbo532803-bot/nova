@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 
@@ -40,7 +41,7 @@ class CognitiveLoop:
         try:
             self.market.run_full_weekly_cycle()
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in cognitive_loop.py")
 
         # -----------------------------------
         # 3. FETCH PRIMARY GOAL

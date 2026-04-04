@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -178,6 +179,6 @@ class StrategyLearningEngine:
                 kg.upsert_node("experiment_cluster", str(best), {"label": str(best)})
                 kg.add_edge("strategy", "current", "FAVORS_CLUSTER", "experiment_cluster", str(best))
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in strategy_learning.py")
         return {"ok": True, "strategy": payload}
 

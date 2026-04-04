@@ -1,3 +1,4 @@
+import logging
 from backend.agents.agent_registry import AgentRegistry
 from backend.agents.parallel_executor import ParallelAgentExecutor
 from backend.agents.agent_voting import AgentVotingSystem
@@ -70,7 +71,7 @@ class SupervisorAgent:
             # Seed shared_context with recent mission memory (structured shared mission intelligence)
             plan["shared_context"]["mission_memory"] = self.working_memory.list(mission_id, limit=50)
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in supervisor.py")
 
         # Task graph missions (complex multi-node execution)
         if isinstance(plan.get("task_graph"), dict):
@@ -104,7 +105,7 @@ class SupervisorAgent:
                     self.registry = AgentRegistry()
                     candidates = [a for a in self.registry.get_candidates(plan) if not self.blacklist.is_blocked(a)]
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in supervisor.py")
 
             if not candidates:
                 raise RuntimeError("No eligible agents")
