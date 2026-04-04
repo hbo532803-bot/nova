@@ -62,6 +62,7 @@ _AUTH_EXEMPT = {
     "/api/login",
     "/api/status",
     "/api/system/health",
+    "/api/leads",
 }
 
 
