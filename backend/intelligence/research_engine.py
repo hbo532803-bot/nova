@@ -106,8 +106,25 @@ class ResearchEngine:
             "what",
             "when",
             "how",
+            "ago",
+            "please",
+            "continue",
+            "today",
+            "yesterday",
+            "tomorrow",
+            "thread",
+            "comment",
+            "comments",
         }
-        filtered = [t for t in tokens if t not in stop and len(t) <= 32]
+        filtered = [
+            t
+            for t in tokens
+            if t not in stop
+            and len(t) <= 32
+            and not t.isdigit()
+            and not re.fullmatch(r"\d+[smhdwy]", t)
+            and not t.endswith("ago")
+        ]
         return Counter(filtered).most_common(50)
 
     def _to_proposals(self, keywords: List[tuple[str, int]], *, max_proposals: int) -> List[Dict[str, Any]]:
@@ -181,7 +198,9 @@ class ResearchEngine:
     ) -> List[Dict[str, Any]]:
         out = []
         for c in clusters[: max_proposals]:
-            kw = (c.get("keywords") or ["tools"])[0]
+            raw_keywords = [str(x).strip().lower() for x in (c.get("keywords") or []) if str(x).strip()]
+            keywords = [k for k in raw_keywords if len(k) >= 3 and k not in {"ago", "please", "continue"}]
+            kw = (keywords or ["tools"])[0]
             niche = f"{kw} workflow"
             cash_score = 60.0
             budget = 150.0
@@ -232,4 +251,3 @@ class ResearchEngine:
                 logging.getLogger(__name__).exception("Suppressed exception in research_engine.py")
 
         return stored
-
