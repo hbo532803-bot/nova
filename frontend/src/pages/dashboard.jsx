@@ -9,30 +9,32 @@ import CommandHistoryPanel from "../components/console/CommandHistoryPanel";
 import SystemStatePanel from "../components/console/SystemStatePanel";
 import ConfidencePanel from "../components/console/ConfidencePanel";
 import IntelligencePanel from "../components/console/IntelligencePanel";
+import OrdersPanel from "../components/dashboard/OrdersPanel";
+import BusinessMetricsPanel from "../components/dashboard/BusinessMetricsPanel";
+import "../styles/admin.css";
 
-export default function Dashboard(){
-
+export default function Dashboard() {
   useNovaSystem();
   useEventBus();
 
-  return(
-
+  return (
     <MainLayout>
+      <div className="admin-page">
+        <SystemMetrics />
 
-      <SystemStatePanel />
+        <div className="admin-grid">
+          <SystemStatePanel />
+          <BusinessMetricsPanel />
+        </div>
 
-      <ConfidencePanel />
+        <OrdersPanel />
 
-      <IntelligencePanel />
-
-      <SwarmControl />
-
-      <CommandHistoryPanel />
-
-      <ActivityStream />
-
+        <CommandHistoryPanel />
+        <ConfidencePanel />
+        <IntelligencePanel />
+        <SwarmControl />
+        <ActivityStream />
+      </div>
     </MainLayout>
-
-  )
-
+  );
 }
