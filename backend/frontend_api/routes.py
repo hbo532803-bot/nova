@@ -39,6 +39,8 @@ from backend.services.requirement_engine import RequirementEngineService
 from backend.services.result_collector import ResultCollector
 from backend.services.delivery_service import DeliveryService
 from backend.intelligence.traffic_engine import TrafficEngine
+from backend.intelligence.signal_engine import SignalEngine
+from backend.intelligence.metrics_engine import MetricsEngine
 import logging
 import threading
 import ast
@@ -51,6 +53,8 @@ _requirement_engine = RequirementEngineService()
 _result_collector = ResultCollector()
 _delivery_service = DeliveryService()
 _traffic_engine = TrafficEngine()
+_signal_engine = SignalEngine()
+_metrics_engine = MetricsEngine()
 _order_logger = logging.getLogger(__name__)
 
 
@@ -512,6 +516,16 @@ def capture_lead(payload: dict):
         conn.commit()
 
     logging.getLogger(__name__).info("NEW_LEAD_CAPTURED", extra={"lead_id": lead_id, "mission_id": mission_id, "source": source})
+    _signal_engine.safe_track_event(
+        event_type="lead",
+        mission_id=mission_id,
+        experiment_id=int(payload.get("experiment_id")) if payload.get("experiment_id") else None,
+        source=source,
+        session_id=str(payload.get("session_id") or ""),
+        is_simulated=False,
+        reason="lead_capture_api",
+        metadata={"lead_id": lead_id},
+    )
     webhook = (os.getenv("NOVA_LEAD_WEBHOOK") or "").strip()
     hook_sent = False
     if webhook:
@@ -562,7 +576,51 @@ def checkout_simulate(payload: dict):
         )
         event_id = int(cursor.lastrowid)
         conn.commit()
+    _signal_engine.safe_track_event(
+        event_type="payment",
+        mission_id=mission_id,
+        experiment_id=int(payload.get("experiment_id")) if payload.get("experiment_id") else None,
+        source=source,
+        session_id=str(payload.get("session_id") or ""),
+        event_value=amount,
+        is_simulated=False,
+        reason="checkout_paid",
+        metadata={"event_id": event_id, "lead_id": int(lead_id) if lead_id else None},
+    )
     return {"ok": True, "event_id": event_id, "mission_id": mission_id, "amount": amount, "status": "PAID"}
+
+
+@router.post("/signals/track")
+def track_signal(payload: dict):
+    mission_id = (payload.get("mission_id") or "").strip()
+    event_type = (payload.get("event_type") or "").strip().lower()
+    source = (payload.get("source") or "frontend").strip()
+    if not mission_id:
+        raise HTTPException(status_code=400, detail="mission_id is required")
+    if not event_type:
+        raise HTTPException(status_code=400, detail="event_type is required")
+
+    try:
+        result = _signal_engine.track_event(
+            event_type=event_type,
+            mission_id=mission_id,
+            experiment_id=int(payload.get("experiment_id")) if payload.get("experiment_id") else None,
+            source=source,
+            session_id=str(payload.get("session_id") or ""),
+            event_value=float(payload.get("event_value")) if payload.get("event_value") is not None else None,
+            is_simulated=bool(payload.get("is_simulated", False)),
+            reason=str(payload.get("reason") or "manual_track"),
+            metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result
+
+
+@router.get("/metrics/capability")
+def capability_metrics(mission_id: str | None = None, experiment_id: int | None = None, admin=Depends(get_current_admin)):
+    return _metrics_engine.compute(mission_id=mission_id, experiment_id=experiment_id)
 
 
 @router.post("/traffic/simulate")
@@ -586,7 +644,12 @@ def simulate_traffic(payload: dict, admin=Depends(get_current_admin)):
 
 @router.get("/metrics/revenue")
 def revenue_metrics(mission_id: str | None = None, admin=Depends(get_current_admin)):
-    return _traffic_engine.dashboard_metrics(mission_id=mission_id)
+    legacy = _traffic_engine.dashboard_metrics(mission_id=mission_id)
+    capability = _metrics_engine.compute(mission_id=mission_id)
+    return {
+        **legacy,
+        "capability": capability,
+    }
 
 
 # -------------------------------------------------

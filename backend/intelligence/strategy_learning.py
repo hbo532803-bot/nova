@@ -33,9 +33,10 @@ class StrategyLearningEngine:
         # Cross-experiment trends (cluster analysis)
         exp_trends = self._experiment_trends(limit=min(200, max(20, lookback)))
         long_term = self._long_term_trends()
+        feedback = self._feedback_summary(limit=min(200, max(20, lookback)))
         if not reflections:
             adjustments = [StrategyAdjustment("risk_bias", "NEUTRAL", "no_reflections")]
-            return self._persist(adjustments, meta={"experiments": exp_trends, "long_term": long_term})
+            return self._persist(adjustments, meta={"experiments": exp_trends, "long_term": long_term, "feedback": feedback})
 
         failures = sum(1 for r in reflections if not bool(r.get("success")))
         failure_rate = failures / max(1, len(reflections))
@@ -57,6 +58,11 @@ class StrategyLearningEngine:
             adjustments.append(StrategyAdjustment("exploration_mode", False, "experiment_trend_up"))
 
         # Adaptive experiment selection hint (playbook preference)
+        if feedback.get("scale_rate", 0.0) >= 0.4:
+            adjustments.append(StrategyAdjustment("execution_bias", "AGGRESSIVE_SCALE", "feedback_scale_rate_high"))
+        elif feedback.get("fail_rate", 0.0) >= 0.5:
+            adjustments.append(StrategyAdjustment("execution_bias", "SAFE_OPTIMIZE", "feedback_fail_rate_high"))
+
         best_cluster = str(exp_trends.get("best_cluster") or "")
         if best_cluster and best_cluster != "unknown":
             preferred = self._preferred_playbooks_for_cluster(best_cluster)
@@ -70,6 +76,7 @@ class StrategyLearningEngine:
                 "count": len(reflections),
                 "experiments": exp_trends,
                 "long_term": long_term,
+                "feedback": feedback,
             },
         )
 
@@ -144,6 +151,29 @@ class StrategyLearningEngine:
             trend = "flat"
 
         return {"trend": trend, "recent_avg_success": round(r, 2), "older_avg_success": round(o, 2)}
+
+    def _feedback_summary(self, *, limit: int = 100) -> Dict[str, Any]:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT decision, COUNT(*) AS n
+                FROM experiment_feedback_loops
+                GROUP BY decision
+                ORDER BY n DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+
+        totals = {str(r["decision"] or "unknown").lower(): int(r["n"] or 0) for r in rows}
+        total = max(1, sum(totals.values()))
+        return {
+            "counts": totals,
+            "scale_rate": round(totals.get("scale", 0) / total, 3),
+            "fail_rate": round(totals.get("fail", 0) / total, 3),
+        }
 
     def _preferred_playbooks_for_cluster(self, cluster: str) -> list[str]:
         """

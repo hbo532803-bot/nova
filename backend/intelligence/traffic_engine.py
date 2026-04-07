@@ -6,6 +6,8 @@ from typing import Any
 from backend.database import get_db
 from backend.db_retry import run_db_write_with_retry
 from backend.knowledge.graph_store import KnowledgeGraphStore
+from backend.intelligence.signal_engine import SignalEngine
+from backend.intelligence.metrics_engine import MetricsEngine
 
 
 class TrafficEngine:
@@ -15,6 +17,8 @@ class TrafficEngine:
 
     def __init__(self):
         self.kg = KnowledgeGraphStore()
+        self.signals = SignalEngine()
+        self.metrics = MetricsEngine()
 
     def simulate(
         self,
@@ -63,6 +67,37 @@ class TrafficEngine:
             return None
 
         run_db_write_with_retry("traffic_metrics.insert", _write)
+
+        self.signals.safe_track_event(
+            event_type="page_view",
+            mission_id=mission_id,
+            experiment_id=experiment_id,
+            source=source,
+            event_value=float(impressions),
+            is_simulated=True,
+            reason="traffic_simulation",
+            metadata={"aggregated": True},
+        )
+        self.signals.safe_track_event(
+            event_type="click",
+            mission_id=mission_id,
+            experiment_id=experiment_id,
+            source=source,
+            event_value=float(clicks),
+            is_simulated=True,
+            reason="traffic_simulation",
+            metadata={"aggregated": True},
+        )
+        self.signals.safe_track_event(
+            event_type="lead",
+            mission_id=mission_id,
+            experiment_id=experiment_id,
+            source=source,
+            event_value=float(leads),
+            is_simulated=True,
+            reason="traffic_simulation",
+            metadata={"aggregated": True},
+        )
 
         result = {
             "mission_id": mission_id,
@@ -142,6 +177,7 @@ class TrafficEngine:
             "conversion_rate_percent": conversion_rate,
             "estimated_revenue": round(estimated_revenue, 2),
             "real_revenue": round(real_revenue, 2),
+            "capability": self.metrics.compute(mission_id=mission_id),
         }
 
     def record_visit(self, *, mission_id: str, source: str = "landing", referral: str = "") -> None:
@@ -160,3 +196,11 @@ class TrafficEngine:
             return None
 
         run_db_write_with_retry("traffic_metrics.record_visit", _write)
+        self.signals.safe_track_event(
+            event_type="page_view",
+            mission_id=mission_id,
+            source=source,
+            is_simulated=False,
+            reason="record_visit",
+            metadata={"referral": referral},
+        )

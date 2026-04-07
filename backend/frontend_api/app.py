@@ -64,6 +64,7 @@ _AUTH_EXEMPT = {
     "/api/checkout/simulate",
     "/api/order/create",
     "/api/order/confirm",
+    "/api/signals/track",
 }
 
 

@@ -57,6 +57,12 @@ class WebsiteDeployer:
         runtime = f"""
 <script>
 window.NOVA_MISSION_ID = "{mission_id}";
+async function novaTrack(eventType, extra) {{
+  const payload = Object.assign({{ mission_id: window.NOVA_MISSION_ID || "", event_type: eventType, source: "landing_runtime" }}, extra || {{}});
+  try {{
+    await fetch('/api/signals/track', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(payload)}});
+  }} catch (_) {{}}
+}}
 async function novaSubmitLead(e) {{
   e.preventDefault();
   const f = e.target;
@@ -72,6 +78,7 @@ async function novaSubmitLead(e) {{
   alert(data.ok ? 'Thanks! We will contact you shortly.' : (data.detail || 'Lead submit failed'));
 }}
 async function novaCheckout() {{
+  await novaTrack('click', {{ reason:'checkout_button_click' }});
   const payload = {{ mission_id: window.NOVA_MISSION_ID || "", amount: 499 }};
   const r = await fetch('/api/checkout/simulate', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(payload)}});
   const data = await r.json();
@@ -79,7 +86,7 @@ async function novaCheckout() {{
 }}
 document.addEventListener('DOMContentLoaded', () => {{
   const form = document.querySelector('form');
-  if (form) form.addEventListener('submit', novaSubmitLead);
+  if (form) form.addEventListener('submit', async (e) => {{ await novaTrack('click', {{ reason:'form_submit_click' }}); return novaSubmitLead(e); }});
   const btn = document.getElementById('nova-checkout-btn');
   if (btn) btn.addEventListener('click', novaCheckout);
 }});

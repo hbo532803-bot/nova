@@ -390,6 +390,44 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS real_signal_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT NOT NULL,
+                experiment_id INTEGER,
+                event_type TEXT NOT NULL,
+                source TEXT,
+                session_id TEXT,
+                event_value REAL,
+                is_simulated INTEGER DEFAULT 0,
+                reason TEXT,
+                metadata_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_real_signal_lookup
+            ON real_signal_events(mission_id, experiment_id, event_type, is_simulated, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS experiment_feedback_loops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment_id INTEGER NOT NULL,
+                strategy_key TEXT,
+                metrics_json TEXT,
+                decision TEXT,
+                reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_experiment_feedback_experiment
+            ON experiment_feedback_loops(experiment_id, created_at)
+            """)
+
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS customer_orders (
                 id TEXT PRIMARY KEY,
                 mission_id TEXT,
