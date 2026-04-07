@@ -22,6 +22,10 @@ from backend.runtime.agent_factory import AgentFactory
 from backend.intelligence.traffic_engine import TrafficEngine
 from backend.intelligence.revenue_execution_engine import RevenueExecutionEngine
 from backend.intelligence.lead_interaction_engine import LeadInteractionEngine
+from backend.intelligence.offer_conversion_engine import OfferConversionEngine
+from backend.intelligence.market_intelligence_engine import MarketIntelligenceEngine
+from backend.intelligence.admin_command_engine import AdminCommandEngine
+from backend.intelligence.communication_control_engine import CommunicationControlEngine
 
 
 class ActionRouter:
@@ -47,6 +51,10 @@ class ActionRouter:
         self.traffic = TrafficEngine()
         self.revenue_execution = RevenueExecutionEngine()
         self.leads = LeadInteractionEngine()
+        self.offer_conversion = OfferConversionEngine()
+        self.market_intelligence = MarketIntelligenceEngine()
+        self.admin_commands = AdminCommandEngine()
+        self.communication = CommunicationControlEngine()
 
     def run(self, action: Dict[str, Any], plan: Dict[str, Any]) -> Any:
         action_type = ActionType(str(action.get("type")))
@@ -216,6 +224,63 @@ class ActionRouter:
             return self.leads.approve_queued_message(
                 queue_id=int(payload.get("queue_id")),
                 approved_by=str(payload.get("approved_by") or "admin"),
+            )
+
+        if action_type == ActionType.CONVERSION_CREATE_OFFER:
+            return self.offer_conversion.create_offer_for_lead(
+                lead_id=int(payload.get("lead_id")),
+                experiment_id=(int(payload.get("experiment_id")) if payload.get("experiment_id") is not None else None),
+                service_type=(str(payload.get("service_type")) if payload.get("service_type") else None),
+                context=(payload.get("context") or {}),
+            )
+
+        if action_type == ActionType.CONVERSION_QUEUE_RESPONSE:
+            return self.offer_conversion.queue_offer_response_for_approval(
+                attempt_id=int(payload.get("attempt_id")),
+                channel=str(payload.get("channel") or "email"),
+            )
+
+        if action_type == ActionType.CONVERSION_MARK_PAYMENT:
+            return self.offer_conversion.mark_real_payment(
+                attempt_id=int(payload.get("attempt_id")),
+                amount=float(payload.get("amount") or 0),
+                approved_by=str(payload.get("approved_by") or "system"),
+            )
+
+        if action_type == ActionType.CONVERSION_FEEDBACK:
+            return self.offer_conversion.conversion_feedback(limit=int(payload.get("limit") or 20))
+
+        if action_type == ActionType.MARKET_INTELLIGENCE_INGEST:
+            return self.market_intelligence.ingest_signal(
+                platform=str(payload.get("platform") or "linkedin"),
+                content=str(payload.get("content") or ""),
+                source_url=str(payload.get("source_url") or ""),
+                author_handle=str(payload.get("author_handle") or ""),
+                is_simulated=bool(payload.get("is_simulated") or False),
+            )
+
+        if action_type == ActionType.MARKET_INTELLIGENCE_SCAN:
+            return self.market_intelligence.discover_opportunities(
+                limit=int(payload.get("limit") or 25),
+                real_only=bool(payload.get("real_only", True)),
+            )
+
+        if action_type == ActionType.ADMIN_COMMAND_PARSE:
+            return self.admin_commands.parse_command(
+                command_text=str(payload.get("command_text") or plan.get("goal") or ""),
+                admin_user=str(payload.get("admin_user") or "admin"),
+            )
+
+        if action_type == ActionType.ADMIN_COMMAND_CREATE_MISSION:
+            return self.admin_commands.create_mission_from_command(command_id=int(payload.get("command_id")))
+
+        if action_type == ActionType.COMMUNICATION_SUGGEST_REPLY:
+            return self.communication.suggest_reply(
+                lead_id=int(payload.get("lead_id")),
+                experiment_id=int(payload.get("experiment_id") or 0),
+                channel=str(payload.get("channel") or "email"),
+                user_message=str(payload.get("user_message") or ""),
+                context=(payload.get("context") or {}),
             )
 
         raise RuntimeError(f"Unknown action type: {action_type}")

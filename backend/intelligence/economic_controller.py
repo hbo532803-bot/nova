@@ -8,6 +8,7 @@ from backend.intelligence.metrics_engine import MetricsEngine
 from backend.intelligence.metric_decision_engine import MetricDecisionEngine
 from backend.intelligence.profit_intelligence_engine import ProfitIntelligenceEngine
 from backend.intelligence.revenue_execution_engine import RevenueExecutionEngine
+from backend.intelligence.offer_conversion_engine import OfferConversionEngine
 
 
 class EconomicController:
@@ -31,6 +32,7 @@ class EconomicController:
         self.metric_decider = MetricDecisionEngine()
         self.profit_engine = ProfitIntelligenceEngine()
         self.execution_engine = RevenueExecutionEngine()
+        self.offer_conversion = OfferConversionEngine()
 
     # =========================================================
     # CORE ECONOMIC LOOP
@@ -524,3 +526,25 @@ class EconomicController:
                     conn.close()
                 except Exception:
                     logging.getLogger(__name__).exception("Suppressed exception in economic_controller.py")
+
+
+    # =========================================================
+    # OFFER + CONVERSION
+    # =========================================================
+
+    def create_offer_for_lead(self, lead_id, experiment_id=None, service_type=None, context=None):
+        return self.offer_conversion.create_offer_for_lead(
+            lead_id=int(lead_id),
+            experiment_id=(int(experiment_id) if experiment_id is not None else None),
+            service_type=(str(service_type) if service_type else None),
+            context=(context or {}),
+        )
+
+    def queue_offer_for_approval(self, attempt_id, channel="email"):
+        return self.offer_conversion.queue_offer_response_for_approval(attempt_id=int(attempt_id), channel=str(channel))
+
+    def mark_offer_payment(self, attempt_id, amount, approved_by="system"):
+        return self.offer_conversion.mark_real_payment(attempt_id=int(attempt_id), amount=float(amount), approved_by=str(approved_by))
+
+    def offer_feedback(self, limit=20):
+        return self.offer_conversion.conversion_feedback(limit=int(limit))

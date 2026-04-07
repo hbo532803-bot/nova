@@ -454,6 +454,138 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS offer_catalog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_type TEXT NOT NULL,
+                tier TEXT NOT NULL,
+                deliverables_json TEXT NOT NULL,
+                expected_outcome TEXT,
+                base_price REAL NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                UNIQUE(service_type, tier)
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversion_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER NOT NULL,
+                experiment_id INTEGER,
+                service_type TEXT NOT NULL,
+                tier TEXT NOT NULL,
+                offer_payload_json TEXT,
+                proposed_price REAL DEFAULT 0,
+                status TEXT DEFAULT 'DRAFT',
+                approved_by TEXT,
+                approved_at DATETIME,
+                converted_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_conversion_attempts_lookup
+            ON conversion_attempts(lead_id, service_type, tier, status, created_at)
+            """)
+
+            default_offers = [
+                ("website_development", "basic", '["single-page site","contact form","mobile-ready"]', "Launch a credible online presence", 1200.0),
+                ("website_development", "standard", '["5-page website","basic SEO","analytics setup"]', "Generate qualified inbound leads", 2800.0),
+                ("website_development", "premium", '["conversion funnel","advanced SEO","CRM integration"]', "Maximize conversion and revenue readiness", 5500.0),
+                ("lead_generation", "basic", '["1 channel setup","lead capture form","weekly report"]', "Start predictable lead flow", 900.0),
+                ("lead_generation", "standard", '["multi-channel outreach plan","qualification workflow","dashboard"]', "Increase qualified lead volume", 2200.0),
+                ("lead_generation", "premium", '["omnichannel engine","intent scoring","conversion optimization"]', "Scale high-intent pipeline", 4800.0),
+                ("automation", "basic", '["1 workflow automation","error alerts","handover doc"]', "Reduce repetitive tasks", 1500.0),
+                ("automation", "standard", '["3 workflow automations","CRM sync","monitoring"]', "Improve operating efficiency", 3200.0),
+                ("automation", "premium", '["end-to-end automation architecture","governance controls","training"]', "Create scalable autonomous operations", 6800.0),
+            ]
+            for row in default_offers:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO offer_catalog
+                    (service_type, tier, deliverables_json, expected_outcome, base_price)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    row,
+                )
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_intelligence_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                source_url TEXT,
+                author_handle TEXT,
+                content TEXT,
+                intent_level TEXT DEFAULT 'low',
+                intent_score REAL DEFAULT 0,
+                category TEXT DEFAULT 'lead_generation',
+                urgency_score REAL DEFAULT 0,
+                problem_summary TEXT,
+                is_simulated INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_intelligence_lookup
+            ON market_intelligence_events(platform, intent_level, category, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS opportunities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_event_id INTEGER,
+                platform TEXT,
+                category TEXT,
+                intent_level TEXT DEFAULT 'low',
+                intent_score REAL DEFAULT 0,
+                urgency_score REAL DEFAULT 0,
+                confidence_score REAL DEFAULT 0,
+                problem_statement TEXT,
+                status TEXT DEFAULT 'NEW',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_commands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_user TEXT,
+                command_text TEXT NOT NULL,
+                mission_type TEXT DEFAULT 'general',
+                parsed_json TEXT,
+                status TEXT DEFAULT 'RECEIVED',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mission_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                command_id INTEGER,
+                goal TEXT,
+                mission_type TEXT,
+                required_capabilities_json TEXT,
+                actions_json TEXT,
+                status TEXT DEFAULT 'PENDING',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_context (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER,
+                experiment_id INTEGER,
+                channel TEXT,
+                user_message TEXT,
+                assistant_suggestion TEXT,
+                context_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS revenue_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 mission_id TEXT,

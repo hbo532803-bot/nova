@@ -119,3 +119,22 @@ Capabilities:
   - pending execution processing
   - lead capture/classification
   - message approval workflow (no auto messaging)
+
+## 9) Autonomous Economic + Admin Command Layer
+
+- Added `MarketIntelligenceEngine` for platform-aware opportunity intake (`linkedin`, `x`, `reddit`, `fiverr`, `upwork`), with extraction of problem summary, intent level/score, urgency, and service category.
+- Added `AdminCommandEngine` to parse natural-language admin directives into structured mission intent and action payloads, then persist missions in `mission_queue`.
+- Added `CommunicationControlEngine` to generate reply suggestions while preserving strict human approval before external communication.
+- Added new data tables:
+  - `market_intelligence_events`
+  - `opportunities`
+  - `admin_commands`
+  - `mission_queue`
+  - `conversation_context`
+- Added action spine support for:
+  - `MARKET_INTELLIGENCE_INGEST`
+  - `MARKET_INTELLIGENCE_SCAN`
+  - `ADMIN_COMMAND_PARSE`
+  - `ADMIN_COMMAND_CREATE_MISSION`
+  - `COMMUNICATION_SUGGEST_REPLY`
+- Extended NovaCore plan generation to detect admin natural-language mission directives and route them through the action spine (no bypass).
