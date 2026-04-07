@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import LandingPage from "../../pages/landing";
+import ProductPage from "../../pages/product";
 import Login from "../../pages/login";
 import Dashboard from "../../pages/dashboard";
 import Agents from "../../pages/agents";
@@ -13,9 +15,9 @@ import ProtectedRoute from "../auth/ProtectedRoute";
 export default function AppRouter() {
   return (
     <BrowserRouter>
-
       <Routes>
-
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/product" element={<ProductPage />} />
         <Route path="/login" element={<Login />} />
 
         <Route
@@ -71,11 +73,7 @@ export default function AppRouter() {
             </ProtectedRoute>
           }
         />
-
-        <Route path="/" element={<Login />} />
-
       </Routes>
-
     </BrowserRouter>
   );
 }
