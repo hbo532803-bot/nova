@@ -118,27 +118,21 @@ class NovaBrainLoop:
     # -------------------------------------------------
 
     def _observe(self):
-
         with get_db() as conn:
-         cursor = conn.cursor()
+            cursor = conn.cursor()
+            cursor.execute("""
+            SELECT COUNT(*) AS total
+            FROM economic_experiments
+            WHERE status NOT IN ('FAILED','ARCHIVED')
+            """)
+            active_experiments = cursor.fetchone()["total"]
 
-        cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM economic_experiments
-        WHERE status NOT IN ('FAILED','ARCHIVED')
-        """)
-
-        active_experiments = cursor.fetchone()["total"]
-
-        cursor.execute("""
-        SELECT COUNT(*) AS pending
-        FROM market_proposals
-        WHERE status='PENDING'
-        """)
-
-        pending_proposals = cursor.fetchone()["pending"]
-
-        conn.close()
+            cursor.execute("""
+            SELECT COUNT(*) AS pending
+            FROM market_proposals
+            WHERE status='PENDING'
+            """)
+            pending_proposals = cursor.fetchone()["pending"]
 
         return {
             "active_experiments": active_experiments,

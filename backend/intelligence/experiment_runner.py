@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -113,7 +114,7 @@ class ExperimentRunner:
                 try:
                     rollback_last(str(item.get("path")))
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in experiment_runner.py")
 
     def _load_experiment(self, experiment_id: int) -> Optional[Dict[str, Any]]:
         with get_db() as conn:
@@ -216,7 +217,7 @@ class ExperimentRunner:
             if "validation_score_gte" in criteria:
                 ok = ok and float(metrics.get("validation_score") or 0) >= float(criteria["validation_score_gte"])
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in experiment_runner.py")
         return ok
 
     def _evaluate_metrics(self, experiment_id: int, playbook: Dict[str, Any], executed: list[dict]) -> Dict[str, Any]:
@@ -331,5 +332,5 @@ class ExperimentRunner:
             self.kg.upsert_node("outcome", outcome_key, {"label": outcome_key})
             self.kg.add_edge("experiment", node_key, "HAS_OUTCOME", "outcome", outcome_key)
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in experiment_runner.py")
 
