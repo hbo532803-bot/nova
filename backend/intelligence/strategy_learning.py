@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from backend.database import get_db
 from backend.intelligence.experiment_analytics import ExperimentAnalytics
 from backend.knowledge.graph_store import KnowledgeGraphStore
+from backend.intelligence.profit_intelligence_engine import ProfitIntelligenceEngine
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,9 @@ class StrategyLearningEngine:
     """
 
     SETTINGS_KEY = "strategy_adjustments"
+
+    def __init__(self) -> None:
+        self.profit_engine = ProfitIntelligenceEngine()
 
     def learn(self, *, lookback: int = 100) -> Dict[str, Any]:
         reflections = self._recent_reflections(limit=lookback)
@@ -70,6 +74,7 @@ class StrategyLearningEngine:
             preferred = self._preferred_playbooks_for_cluster(best_cluster)
             if preferred:
                 adjustments.append(StrategyAdjustment("preferred_playbooks", preferred, "best_cluster"))
+                self._record_strategy_pattern(best_cluster)
 
         return self._persist(
             adjustments,
@@ -224,3 +229,26 @@ class StrategyLearningEngine:
             logging.getLogger(__name__).exception("Suppressed exception in strategy_learning.py")
         return {"ok": True, "strategy": payload}
 
+    def _record_strategy_pattern(self, strategy_type: str) -> None:
+        comparison = self.profit_engine.compare_experiments(limit=100)
+        ranking = comparison.get("ranking") or []
+        if not ranking:
+            return
+        profitable = [x for x in ranking if float(x.get("profit") or 0.0) > 0]
+        success_rate = len(profitable) / max(1, len(ranking))
+        avg_profit = sum(float(x.get("profit") or 0.0) for x in ranking) / max(1, len(ranking))
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO strategy_patterns (strategy_type, success_rate, avg_profit, sample_size, last_seen)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(strategy_type) DO UPDATE SET
+                    success_rate=excluded.success_rate,
+                    avg_profit=excluded.avg_profit,
+                    sample_size=excluded.sample_size,
+                    last_seen=datetime('now')
+                """,
+                (strategy_type, success_rate, avg_profit, len(ranking)),
+            )
+            conn.commit()
