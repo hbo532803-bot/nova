@@ -186,6 +186,50 @@ class TrafficEngine:
             "capability": self.metrics.compute(mission_id=mission_id),
         }
 
+    def generate_traffic(
+        self,
+        *,
+        mission_id: str,
+        channel: str,
+        volume: int,
+        quality_score: float,
+        experiment_id: int | None = None,
+        mode: str = "manual",
+    ) -> dict[str, Any]:
+        """
+        Real execution-ready traffic ingestion.
+        Does not fabricate conversions; records observed traffic signals only.
+        """
+        volume = max(0, int(volume))
+        quality_score = max(0.0, min(1.0, float(quality_score)))
+        def _write(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO traffic_metrics
+                (mission_id, source, impressions, clicks, leads, conversion_rate, lead_value, estimated_revenue, experiment_id)
+                VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?)
+                """,
+                (mission_id, f"{mode}:{channel}", volume, experiment_id),
+            )
+            conn.commit()
+            return None
+        run_db_write_with_retry("traffic_metrics.generate", _write)
+
+        self.signals.safe_track_event(
+            event_type="page_view",
+            mission_id=mission_id,
+            experiment_id=experiment_id,
+            source=channel,
+            event_value=float(volume),
+            is_simulated=False if mode != "simulated" else True,
+            data_source="real" if mode != "simulated" else "simulated",
+            traffic_source=channel,
+            reason="traffic_generation",
+            metadata={"quality_score": quality_score, "mode": mode},
+        )
+        return {"mission_id": mission_id, "channel": channel, "volume": volume, "quality_score": quality_score, "mode": mode}
+
     def record_visit(self, *, mission_id: str, source: str = "landing", referral: str = "") -> None:
         def _write(conn):
             cursor = conn.cursor()

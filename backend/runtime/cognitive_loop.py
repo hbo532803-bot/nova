@@ -10,6 +10,7 @@ from backend.intelligence.market_engine.weekly_runner import MarketWeeklyRunner
 from backend.frontend_api.event_bus import broadcast
 from backend.system.audit_log import audit_log
 from backend.intelligence.strategy_learning import StrategyLearningEngine
+from backend.intelligence.profit_intelligence_engine import ProfitIntelligenceEngine
 
 
 class CognitiveLoop:
@@ -22,6 +23,7 @@ class CognitiveLoop:
         self.monitor = SystemMonitor()
         self.market = MarketWeeklyRunner()
         self.strategy_learning = StrategyLearningEngine()
+        self.profit_engine = ProfitIntelligenceEngine()
 
     # -----------------------------------
     # RUN ONE CYCLE
@@ -127,6 +129,15 @@ class CognitiveLoop:
             })
         except Exception:
             logging.getLogger(__name__).exception("strategy learning refresh failed")
+
+        try:
+            economy_rank = self.profit_engine.compare_experiments(limit=20)
+            broadcast({
+                "type": "economic_rank",
+                "data": economy_rank,
+            })
+        except Exception:
+            logging.getLogger(__name__).exception("economic ranking refresh failed")
 
     # -----------------------------------
     # CONTINUOUS LOOP
