@@ -6,6 +6,7 @@ from backend.intelligence.confidence_engine import ConfidenceEngine
 from backend.intelligence.roi_engine import ROIEngine
 from backend.intelligence.metrics_engine import MetricsEngine
 from backend.intelligence.metric_decision_engine import MetricDecisionEngine
+from backend.intelligence.profit_intelligence_engine import ProfitIntelligenceEngine
 
 
 class EconomicController:
@@ -26,6 +27,7 @@ class EconomicController:
         self.confidence = ConfidenceEngine()
         self.metrics_engine = MetricsEngine()
         self.metric_decider = MetricDecisionEngine()
+        self.profit_engine = ProfitIntelligenceEngine()
 
     # =========================================================
     # CORE ECONOMIC LOOP
@@ -54,6 +56,7 @@ class EconomicController:
             exp_id = exp["id"]
 
             roi_update = self.allocate_capital(exp_id)
+            priority_update = self.profit_engine.update_priority(exp_id)
             kill_result = self.auto_kill_if_needed(exp_id)
             lifecycle = self.evaluate_progress(exp_id)
             metric_decision = self.apply_metric_decision(exp_id)
@@ -61,14 +64,18 @@ class EconomicController:
             results.append({
                 "experiment_id": exp_id,
                 "roi_update": roi_update,
+                "priority_update": priority_update,
                 "kill_check": kill_result,
                 "lifecycle": lifecycle,
                 "metric_decision": metric_decision,
             })
 
+        comparison = self.profit_engine.compare_experiments(limit=max(20, len(results)))
+
         return {
             "processed_experiments": len(results),
-            "details": results
+            "details": results,
+            "comparison": comparison,
         }
 
     # =========================================================
@@ -137,6 +144,7 @@ class EconomicController:
             return {"error": "ROI calculation failed"}
 
         roi = roi_result["roi"]
+        priority = self.profit_engine.update_priority(experiment_id)
 
         with get_db() as conn:
 
@@ -155,11 +163,13 @@ class EconomicController:
             if capital == 0:
                 capital = 100
 
-            if roi > 0.2:
+            level = str(priority.get("priority_level") or "LOW")
+            if roi > 0 and level == "HIGH":
                 capital *= 1.5
                 self.confidence.adjust(+1)
-
-            elif roi < 0:
+            elif roi > 0 and level == "MEDIUM":
+                capital *= 1.15
+            elif roi < 0 or level == "LOW":
                 capital *= 0.5
                 self.confidence.adjust(-1)
 
@@ -173,6 +183,7 @@ class EconomicController:
 
         return {
             "roi": roi,
+            "priority_level": priority.get("priority_level"),
             "new_capital": capital,
             "consecutive_losses": roi_result["consecutive_losses"]
         }
@@ -232,11 +243,14 @@ class EconomicController:
 
         metrics = self.metrics_engine.compute(experiment_id=int(experiment_id))
         decision = self.metric_decider.decide(metrics)
+        economics = self.profit_engine.update_profit_snapshot(experiment_id)
         current_status = str(row["status"] or "")
         next_status = current_status
 
-        if decision["decision"] == "scale":
+        if decision["decision"] == "scale" and float(economics.get("roi") or 0.0) > 0:
             next_status = "SCALING"
+        elif decision["decision"] == "scale":
+            decision = {"decision": "hold", "reason": "roi_not_positive"}
         elif decision["decision"] == "fail":
             next_status = "FAILED"
         elif decision["decision"] == "optimize" and current_status in {"LIVE", "SCALING"}:
@@ -273,11 +287,27 @@ class EconomicController:
             "status_before": current_status,
             "status_after": next_status,
             "metrics": metrics.get("metrics", {}),
+            "economics": {
+                "profit": economics.get("profit"),
+                "roi": economics.get("roi"),
+                "priority": self.profit_engine.update_priority(experiment_id).get("priority_level"),
+            },
         }
 
     # =========================================================
     # REVENUE UPDATE
     # =========================================================
+
+    def track_experiment_cost(self, experiment_id, amount, *, source="manual_input", is_simulated=False):
+
+        tracked = self.profit_engine.track_cost(
+            int(experiment_id),
+            float(amount),
+            source=str(source),
+            is_simulated=bool(is_simulated),
+        )
+        economics = self.profit_engine.update_profit_snapshot(int(experiment_id))
+        return {"tracked": tracked, "economics": economics}
 
     def update_revenue(self, experiment_id, revenue):
 
