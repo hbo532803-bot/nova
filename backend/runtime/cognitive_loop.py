@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 
@@ -7,6 +8,7 @@ from backend.runtime.memory_bridge import MemoryBridge
 from backend.runtime.system_monitor import SystemMonitor
 from backend.intelligence.market_engine.weekly_runner import MarketWeeklyRunner
 from backend.frontend_api.event_bus import broadcast
+from backend.system.audit_log import audit_log
 
 
 class CognitiveLoop:
@@ -40,7 +42,7 @@ class CognitiveLoop:
         try:
             self.market.run_full_weekly_cycle()
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Suppressed exception in cognitive_loop.py")
 
         # -----------------------------------
         # 3. FETCH PRIMARY GOAL
@@ -84,6 +86,12 @@ class CognitiveLoop:
         # -----------------------------------
 
         execution_result = self.executor.execute_command(goal)
+        audit_log(
+            actor="nova_loop",
+            action="cognitive.execute",
+            target=str(goal),
+            payload={"reason": "planner_approved", "outcome": str(execution_result)},
+        )
 
         # -----------------------------------
         # 7. REFLECT

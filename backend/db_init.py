@@ -2,7 +2,6 @@ from backend.database import get_db
 
 
 def initialize_all_tables(reset: bool = False):
-
     with get_db() as conn:
         cursor = conn.cursor()
 
@@ -37,6 +36,9 @@ def initialize_all_tables(reset: bool = False):
                 DROP TABLE IF EXISTS nova_commands;
                 DROP TABLE IF EXISTS audit_log;
                 DROP TABLE IF EXISTS agent_tasks;
+                DROP TABLE IF EXISTS leads;
+                DROP TABLE IF EXISTS traffic_metrics;
+                DROP TABLE IF EXISTS revenue_events;
 
                 """)
 
@@ -338,6 +340,114 @@ def initialize_all_tables(reset: bool = False):
                 ip TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
+            """)
+
+            # ================= REVENUE EXECUTION =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                name TEXT NOT NULL,
+                email TEXT,
+                phone TEXT,
+                source TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_leads_mission_created
+            ON leads(mission_id, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                source TEXT,
+                impressions INTEGER DEFAULT 0,
+                clicks INTEGER DEFAULT 0,
+                leads INTEGER DEFAULT 0,
+                conversion_rate REAL DEFAULT 0,
+                lead_value REAL DEFAULT 200,
+                estimated_revenue REAL DEFAULT 0,
+                experiment_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS revenue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT,
+                lead_id INTEGER,
+                amount REAL DEFAULT 0,
+                status TEXT DEFAULT 'PENDING',
+                source TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS real_signal_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT NOT NULL,
+                experiment_id INTEGER,
+                event_type TEXT NOT NULL,
+                source TEXT,
+                session_id TEXT,
+                event_value REAL,
+                is_simulated INTEGER DEFAULT 0,
+                reason TEXT,
+                metadata_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_real_signal_lookup
+            ON real_signal_events(mission_id, experiment_id, event_type, is_simulated, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS experiment_feedback_loops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment_id INTEGER NOT NULL,
+                strategy_key TEXT,
+                metrics_json TEXT,
+                decision TEXT,
+                reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_experiment_feedback_experiment
+            ON experiment_feedback_loops(experiment_id, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customer_orders (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                user_input TEXT NOT NULL,
+                service TEXT,
+                requirement_json TEXT,
+                offers_json TEXT,
+                selected_plan TEXT,
+                command_text TEXT,
+                status TEXT DEFAULT 'PENDING',
+                progress INTEGER DEFAULT 0,
+                execution_result TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_customer_orders_status_created
+            ON customer_orders(status, created_at)
             """)
 
             conn.commit()

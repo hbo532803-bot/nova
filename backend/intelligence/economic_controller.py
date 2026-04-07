@@ -1,7 +1,11 @@
+import logging
+import json
 from datetime import datetime
 from backend.database import get_db
 from backend.intelligence.confidence_engine import ConfidenceEngine
 from backend.intelligence.roi_engine import ROIEngine
+from backend.intelligence.metrics_engine import MetricsEngine
+from backend.intelligence.metric_decision_engine import MetricDecisionEngine
 
 
 class EconomicController:
@@ -20,6 +24,8 @@ class EconomicController:
 
         self.roi_engine = ROIEngine()
         self.confidence = ConfidenceEngine()
+        self.metrics_engine = MetricsEngine()
+        self.metric_decider = MetricDecisionEngine()
 
     # =========================================================
     # CORE ECONOMIC LOOP
@@ -50,12 +56,14 @@ class EconomicController:
             roi_update = self.allocate_capital(exp_id)
             kill_result = self.auto_kill_if_needed(exp_id)
             lifecycle = self.evaluate_progress(exp_id)
+            metric_decision = self.apply_metric_decision(exp_id)
 
             results.append({
                 "experiment_id": exp_id,
                 "roi_update": roi_update,
                 "kill_check": kill_result,
-                "lifecycle": lifecycle
+                "lifecycle": lifecycle,
+                "metric_decision": metric_decision,
             })
 
         return {
@@ -207,6 +215,63 @@ class EconomicController:
                 return {"status": "FAILED"}
 
         return {"status": "ACTIVE"}
+
+    # =========================================================
+    # METRIC-DRIVEN DECISION
+    # =========================================================
+
+    def apply_metric_decision(self, experiment_id):
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, status, name FROM economic_experiments WHERE id=?", (experiment_id,))
+            row = cursor.fetchone()
+
+        if not row:
+            return {"error": "experiment_not_found"}
+
+        metrics = self.metrics_engine.compute(experiment_id=int(experiment_id))
+        decision = self.metric_decider.decide(metrics)
+        current_status = str(row["status"] or "")
+        next_status = current_status
+
+        if decision["decision"] == "scale":
+            next_status = "SCALING"
+        elif decision["decision"] == "fail":
+            next_status = "FAILED"
+        elif decision["decision"] == "optimize" and current_status in {"LIVE", "SCALING"}:
+            next_status = "TESTING"
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            if next_status != current_status:
+                cursor.execute(
+                    "UPDATE economic_experiments SET status=?, last_tested=? WHERE id=?",
+                    (next_status, datetime.utcnow(), experiment_id),
+                )
+
+            cursor.execute(
+                """
+                INSERT INTO experiment_feedback_loops (experiment_id, strategy_key, metrics_json, decision, reason)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(experiment_id),
+                    str(row["name"] or "strategy_unknown"),
+                    json.dumps(metrics),
+                    str(decision["decision"]),
+                    str(decision["reason"]),
+                ),
+            )
+            conn.commit()
+
+        return {
+            "decision": decision["decision"],
+            "reason": decision["reason"],
+            "status_before": current_status,
+            "status_after": next_status,
+            "metrics": metrics.get("metrics", {}),
+        }
 
     # =========================================================
     # REVENUE UPDATE
@@ -366,11 +431,11 @@ class EconomicController:
                 try:
                     conn.rollback()
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in economic_controller.py")
             raise
         finally:
             if owned:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception("Suppressed exception in economic_controller.py")
