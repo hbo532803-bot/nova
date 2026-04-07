@@ -1,16 +1,65 @@
-# React + Vite
+# Nova Frontend (Product + Admin)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This frontend contains two separate experiences:
 
-Currently, two official plugins are available:
+- **User Product UI**: `/` and `/product`
+- **Admin UI**: `/login` then protected routes like `/dashboard`
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 1) Install dependencies
 
-## React Compiler
+```bash
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 2) Configure backend API URL
 
-## Expanding the ESLint configuration
+Create a `.env` file in `frontend/`:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+Compatibility fallback is also supported for:
+
+```bash
+REACT_APP_API_URL=http://127.0.0.1:8000
+```
+
+## 3) Run development server
+
+Use either command:
+
+```bash
+npm run dev
+```
+
+or
+
+```bash
+npm start
+```
+
+The app runs at:
+
+- `http://localhost:3000`
+
+## 4) Build production bundle
+
+```bash
+npm run build
+```
+
+## Backend + CORS checklist
+
+- Backend must be running (default expected: `http://127.0.0.1:8000`).
+- If requests fail in browser with CORS errors, ensure backend CORS allows origin:
+  - `http://localhost:3000`
+- Ensure frontend `.env` API URL matches backend host/port exactly.
+
+## Product flow tested in UI
+
+1. User enters goal in `/product`.
+2. Frontend calls `POST /api/order/create`.
+3. User selects a plan and completes fake payment gate.
+4. Frontend calls `POST /api/order/confirm`.
+5. Frontend polls `GET /api/order/status/{order_id}` and renders result/value cards.

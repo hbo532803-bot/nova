@@ -1,4 +1,6 @@
-const API = "http://localhost:8000/api";
+import { API_BASE_URL } from "./apiConfig";
+
+const API = `${API_BASE_URL}/api`;
 
 export async function getAgents() {
   const res = await fetch(`${API}/agents`);
