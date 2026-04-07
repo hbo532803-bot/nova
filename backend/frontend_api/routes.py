@@ -72,6 +72,19 @@ def _safe_json_parse(raw):
     return {"raw": text}
 
 
+
+
+def _traffic_source(value: str) -> str:
+    t = (value or "").strip().lower()
+    if "ads" in t or "google" in t or "meta" in t:
+        return "ads"
+    if "organic" in t or "seo" in t:
+        return "organic"
+    if "manual" in t or "direct" in t:
+        return "manual"
+    return "unknown"
+
+
 def _update_order(order_id: str, **fields):
     if not fields:
         return
@@ -522,7 +535,10 @@ def capture_lead(payload: dict):
         experiment_id=int(payload.get("experiment_id")) if payload.get("experiment_id") else None,
         source=source,
         session_id=str(payload.get("session_id") or ""),
-        is_simulated=False,
+        data_source="real",
+        traffic_source=_traffic_source(source),
+        lead_quality=str(payload.get("lead_quality") or "medium"),
+        conversion_to_payment=False,
         reason="lead_capture_api",
         metadata={"lead_id": lead_id},
     )
@@ -583,7 +599,9 @@ def checkout_simulate(payload: dict):
         source=source,
         session_id=str(payload.get("session_id") or ""),
         event_value=amount,
-        is_simulated=False,
+        data_source="real",
+        traffic_source=_traffic_source(source),
+        conversion_to_payment=True,
         reason="checkout_paid",
         metadata={"event_id": event_id, "lead_id": int(lead_id) if lead_id else None},
     )
@@ -609,6 +627,10 @@ def track_signal(payload: dict):
             session_id=str(payload.get("session_id") or ""),
             event_value=float(payload.get("event_value")) if payload.get("event_value") is not None else None,
             is_simulated=bool(payload.get("is_simulated", False)),
+            data_source=str(payload.get("data_source") or "").strip().lower() or None,
+            traffic_source=_traffic_source(str(payload.get("traffic_source") or source)),
+            lead_quality=str(payload.get("lead_quality") or "").strip().lower() or None,
+            conversion_to_payment=payload.get("conversion_to_payment") if payload.get("conversion_to_payment") is not None else None,
             reason=str(payload.get("reason") or "manual_track"),
             metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
         )
@@ -619,8 +641,29 @@ def track_signal(payload: dict):
 
 
 @router.get("/metrics/capability")
-def capability_metrics(mission_id: str | None = None, experiment_id: int | None = None, admin=Depends(get_current_admin)):
-    return _metrics_engine.compute(mission_id=mission_id, experiment_id=experiment_id)
+def capability_metrics(
+    mission_id: str | None = None,
+    experiment_id: int | None = None,
+    min_sample_threshold: int = 50,
+    admin=Depends(get_current_admin),
+):
+    return _metrics_engine.compute(
+        mission_id=mission_id,
+        experiment_id=experiment_id,
+        min_sample_threshold=min_sample_threshold,
+    )
+
+
+@router.get("/metrics/funnel")
+def funnel_metrics(mission_id: str | None = None, experiment_id: int | None = None, admin=Depends(get_current_admin)):
+    metrics = _metrics_engine.compute(mission_id=mission_id, experiment_id=experiment_id)
+    return {
+        "mission_id": mission_id,
+        "experiment_id": experiment_id,
+        "funnel": metrics.get("funnel", {}),
+        "reliability": metrics.get("reliability", {}),
+        "traffic_source": metrics.get("traffic_source", {}),
+    }
 
 
 @router.post("/traffic/simulate")

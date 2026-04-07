@@ -75,6 +75,8 @@ class TrafficEngine:
             source=source,
             event_value=float(impressions),
             is_simulated=True,
+            data_source="simulated",
+            traffic_source="ads",
             reason="traffic_simulation",
             metadata={"aggregated": True},
         )
@@ -85,6 +87,8 @@ class TrafficEngine:
             source=source,
             event_value=float(clicks),
             is_simulated=True,
+            data_source="simulated",
+            traffic_source="ads",
             reason="traffic_simulation",
             metadata={"aggregated": True},
         )
@@ -95,6 +99,8 @@ class TrafficEngine:
             source=source,
             event_value=float(leads),
             is_simulated=True,
+            data_source="simulated",
+            traffic_source="ads",
             reason="traffic_simulation",
             metadata={"aggregated": True},
         )
@@ -196,10 +202,13 @@ class TrafficEngine:
             return None
 
         run_db_write_with_retry("traffic_metrics.record_visit", _write)
+        traffic_source = "organic" if "organic" in source.lower() else ("ads" if "ad" in source.lower() else "manual")
         self.signals.safe_track_event(
             event_type="page_view",
             mission_id=mission_id,
             source=source,
+            data_source="real",
+            traffic_source=traffic_source,
             is_simulated=False,
             reason="record_visit",
             metadata={"referral": referral},

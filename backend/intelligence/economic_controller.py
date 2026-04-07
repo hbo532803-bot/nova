@@ -241,6 +241,8 @@ class EconomicController:
             next_status = "FAILED"
         elif decision["decision"] == "optimize" and current_status in {"LIVE", "SCALING"}:
             next_status = "TESTING"
+        elif decision["decision"] == "gather_more_data":
+            next_status = current_status
 
         with get_db() as conn:
             cursor = conn.cursor()

@@ -58,6 +58,8 @@ class StrategyLearningEngine:
             adjustments.append(StrategyAdjustment("exploration_mode", False, "experiment_trend_up"))
 
         # Adaptive experiment selection hint (playbook preference)
+        if feedback.get("gather_more_data_rate", 0.0) >= 0.5:
+            adjustments.append(StrategyAdjustment("data_collection_bias", "INCREASE_TRAFFIC", "reliability_insufficient"))
         if feedback.get("scale_rate", 0.0) >= 0.4:
             adjustments.append(StrategyAdjustment("execution_bias", "AGGRESSIVE_SCALE", "feedback_scale_rate_high"))
         elif feedback.get("fail_rate", 0.0) >= 0.5:
@@ -166,6 +168,14 @@ class StrategyLearningEngine:
                 (limit,),
             )
             rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS n
+                FROM experiment_feedback_loops
+                WHERE reason='insufficient_reliable_sample'
+                """
+            )
+            unreliable = int((cursor.fetchone()["n"] or 0))
 
         totals = {str(r["decision"] or "unknown").lower(): int(r["n"] or 0) for r in rows}
         total = max(1, sum(totals.values()))
@@ -173,6 +183,8 @@ class StrategyLearningEngine:
             "counts": totals,
             "scale_rate": round(totals.get("scale", 0) / total, 3),
             "fail_rate": round(totals.get("fail", 0) / total, 3),
+            "gather_more_data_rate": round(totals.get("gather_more_data", 0) / total, 3),
+            "unreliable_decisions": unreliable,
         }
 
     def _preferred_playbooks_for_cluster(self, cluster: str) -> list[str]:

@@ -411,6 +411,29 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_journey (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mission_id TEXT NOT NULL,
+                experiment_id INTEGER,
+                session_id TEXT NOT NULL,
+                event_sequence INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                data_source TEXT DEFAULT 'real',
+                traffic_source TEXT DEFAULT 'unknown',
+                lead_quality TEXT,
+                conversion_to_payment INTEGER,
+                event_value REAL,
+                metadata_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_session_journey_lookup
+            ON session_journey(mission_id, experiment_id, session_id, event_sequence, created_at)
+            """)
+
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS experiment_feedback_loops (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 experiment_id INTEGER NOT NULL,

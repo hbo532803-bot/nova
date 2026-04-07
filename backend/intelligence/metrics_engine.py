@@ -7,16 +7,19 @@ from backend.database import get_db
 
 class MetricsEngine:
     """
-    Aggregates real capability metrics from tracked signals.
-    All outputs include real vs simulated segregation.
+    Aggregates reliable metrics with strict real-vs-simulated separation.
     """
+
+    DEFAULT_MIN_SAMPLE_THRESHOLD = 50
 
     def compute(
         self,
         *,
         mission_id: str | None = None,
         experiment_id: int | None = None,
+        min_sample_threshold: int | None = None,
     ) -> dict[str, Any]:
+        threshold = int(min_sample_threshold or self.DEFAULT_MIN_SAMPLE_THRESHOLD)
         where = []
         params: list[Any] = []
         if mission_id:
@@ -58,15 +61,51 @@ class MetricsEngine:
             )
             revenue_row = cursor.fetchone()
 
+            cursor.execute(
+                f"""
+                SELECT
+                    COALESCE(SUM(CASE WHEN event_type='lead' AND lead_quality='high' THEN 1 ELSE 0 END),0) AS high_quality,
+                    COALESCE(SUM(CASE WHEN event_type='lead' AND lead_quality='medium' THEN 1 ELSE 0 END),0) AS medium_quality,
+                    COALESCE(SUM(CASE WHEN event_type='lead' AND lead_quality='low' THEN 1 ELSE 0 END),0) AS low_quality
+                FROM session_journey
+                {where_sql}
+                """,
+                tuple(params),
+            )
+            quality_row = cursor.fetchone()
+
+            cursor.execute(
+                f"""
+                SELECT traffic_source, COUNT(*) AS n
+                FROM session_journey
+                {where_sql}
+                GROUP BY traffic_source
+                """,
+                tuple(params),
+            )
+            traffic_rows = cursor.fetchall()
+
         real_page_views = int((row["real_page_views"] or 0) if row else 0)
         real_clicks = int((row["real_clicks"] or 0) if row else 0)
         real_leads = int((row["real_leads"] or 0) if row else 0)
+        real_payments = int((row["real_payments"] or 0) if row else 0)
         real_unique_users = int((row["real_unique_users"] or 0) if row else 0)
         paid_revenue = float((revenue_row["paid_revenue"] or 0.0) if revenue_row else 0.0)
 
-        ctr = (real_clicks / real_page_views) if real_page_views else 0.0
-        conversion_rate = (real_leads / real_clicks) if real_clicks else 0.0
+        view_to_click = (real_clicks / real_page_views) if real_page_views else 0.0
+        click_to_lead = (real_leads / real_clicks) if real_clicks else 0.0
+        lead_to_payment = (real_payments / real_leads) if real_leads else 0.0
         rpu = (paid_revenue / real_unique_users) if real_unique_users else 0.0
+
+        total_events_real = real_page_views + real_clicks + real_leads + real_payments
+        is_reliable = real_page_views >= threshold
+        reliability = {
+            "total_views": real_page_views,
+            "total_events": total_events_real,
+            "min_sample_threshold": threshold,
+            "is_data_reliable": is_reliable,
+            "quality_flag": "reliable" if is_reliable else "low_sample",
+        }
 
         return {
             "mission_id": mission_id,
@@ -75,7 +114,7 @@ class MetricsEngine:
                 "page_views": real_page_views,
                 "clicks": real_clicks,
                 "leads": real_leads,
-                "payments": int((row["real_payments"] or 0) if row else 0),
+                "payments": real_payments,
                 "unique_users": real_unique_users,
             },
             "simulated": {
@@ -85,9 +124,26 @@ class MetricsEngine:
                 "payments": int(float((row["simulated_payments"] or 0) if row else 0)),
             },
             "metrics": {
-                "click_through_rate": round(ctr, 4),
-                "conversion_rate": round(conversion_rate, 4),
+                "click_through_rate": round(view_to_click, 4),
+                "conversion_rate": round(click_to_lead, 4),
                 "revenue_per_user": round(rpu, 2),
                 "paid_revenue": round(paid_revenue, 2),
             },
+            "funnel": {
+                "view_to_click_rate": round(view_to_click, 4),
+                "click_to_lead_rate": round(click_to_lead, 4),
+                "lead_to_payment_rate": round(lead_to_payment, 4),
+                "dropoff": {
+                    "views_without_click": max(0, real_page_views - real_clicks),
+                    "clicks_without_lead": max(0, real_clicks - real_leads),
+                    "leads_without_payment": max(0, real_leads - real_payments),
+                },
+            },
+            "lead_quality": {
+                "high": int((quality_row["high_quality"] or 0) if quality_row else 0),
+                "medium": int((quality_row["medium_quality"] or 0) if quality_row else 0),
+                "low": int((quality_row["low_quality"] or 0) if quality_row else 0),
+            },
+            "traffic_source": {str(r["traffic_source"] or "unknown"): int(r["n"] or 0) for r in traffic_rows},
+            "reliability": reliability,
         }
