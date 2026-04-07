@@ -1,0 +1,140 @@
+# NOVA Profit-Driven Intelligence Upgrade
+
+## 1) Architecture Update
+
+NOVA now operates with a dedicated **profit intelligence layer**:
+
+1. `ProfitIntelligenceEngine`
+   - Cost tracking (`experiment_cost_events`)
+   - Profit/ROI/CAC computation
+   - Time-aware profit windows (`last_24h`, `last_7_days`, growth rate)
+   - Cross-experiment comparison and ranking
+   - Priority scoring and level assignment
+2. `EconomicController` (integration)
+   - Enforces ROI-positive scaling rule
+   - Uses priority for capital allocation (HIGH/MEDIUM/LOW)
+3. `StrategyLearningEngine` (integration)
+   - Persists strategy-level economic patterns in `strategy_patterns`
+4. `CognitiveLoop` (integration)
+   - Broadcasts economic ranking signal for autonomous planning
+
+## 2) New DB Schema
+
+### `economic_experiments` (new columns)
+- `cost_total`
+- `cost_real_total`
+- `cost_simulated_total`
+- `cost_per_click`
+- `cost_per_lead`
+- `revenue_total`
+- `profit_total`
+- `profit_per_user`
+- `cac`
+- `growth_rate`
+- `priority_score`
+- `priority_level`
+
+### New table: `experiment_cost_events`
+- `experiment_id`
+- `source` (`manual_input`, `simulated_traffic`, future ad providers)
+- `cost_amount`
+- `is_simulated` (strict separation of real/simulated)
+- `metadata_json`
+
+### New table: `strategy_patterns`
+- `strategy_type`
+- `success_rate`
+- `avg_profit`
+- `sample_size`
+- `last_seen`
+
+## 3) Modules Added
+
+- `backend/intelligence/profit_intelligence_engine.py`
+
+Capabilities:
+- `track_cost(...)`
+- `update_profit_snapshot(...)`
+- `compare_experiments(...)`
+- `update_priority(...)`
+
+## 4) Decision Logic Changes
+
+1. **Profit > vanity metrics**: economics snapshot updates each cycle.
+2. **No scaling without positive ROI**:
+   - A metric decision of `scale` is downgraded to `hold` when ROI <= 0.
+3. **Reliability before priority**:
+   - Unreliable data forces LOW priority.
+4. **Capital allocation policy**:
+   - HIGH + positive ROI -> increase capital aggressively.
+   - MEDIUM + positive ROI -> modest capital increase.
+   - LOW or negative ROI -> reduce capital.
+5. **Real vs simulated isolation**:
+   - Profit/ROI decisions use real cost baseline.
+6. **Real economic validity hardening**:
+   - Scaling uses reliable samples + positive ROI + real payment revenue only.
+   - Hard stop if ROI < 0 on reliable data.
+   - Pause if cost rises while conversion does not improve.
+
+## 5) Example Flow
+
+1. Experiment receives traffic and conversion events.
+2. Costs are recorded through `track_experiment_cost`.
+3. Profit snapshot computes:
+   - `cost_total`, `cost_per_click`, `cost_per_lead`
+   - `revenue_total`, `profit`, `profit_per_user`, `cac`, `roi`
+4. Priority is computed from weighted:
+   - profit, ROI, growth_rate, reliability
+5. Economic controller chooses capital action:
+   - HIGH -> allocate more
+   - LOW -> reduce/stop scaling
+6. Strategy learner records strategy economic pattern in `strategy_patterns`.
+
+## 6) Test Scenarios
+
+1. **Positive economics + reliable sample**
+   - Input: reliable traffic, positive profit, ROI > 0
+   - Expected: priority HIGH/MEDIUM, scaling allowed
+2. **Strong conversion but negative ROI**
+   - Input: conversion threshold met, ROI <= 0
+   - Expected: decision forced to hold (no scaling)
+3. **Unreliable sample**
+   - Input: low sample size
+   - Expected: gather more data / LOW priority
+4. **Simulated-heavy cost stream**
+   - Input: simulated costs dominate
+   - Expected: real/simulated costs split; decision baseline uses real costs
+5. **Portfolio ranking**
+   - Input: multiple active experiments
+   - Expected: ranked list + best experiment returned
+
+## 7) Execution + Revenue Readiness
+
+- Added active execution queue: `execution_actions`
+- Added communication approval queue: `communication_queue`
+- Added lead intent fields in `leads` (`intent_level`, `intent_score`)
+- Action loop now supports:
+  - traffic generation
+  - priority-based execution plans
+  - pending execution processing
+  - lead capture/classification
+  - message approval workflow (no auto messaging)
+
+## 9) Autonomous Economic + Admin Command Layer
+
+- Added `MarketIntelligenceEngine` for platform-aware opportunity intake (`linkedin`, `x`, `reddit`, `fiverr`, `upwork`), with extraction of problem summary, intent level/score, urgency, and service category.
+- Added `AdminCommandEngine` to parse natural-language admin directives into structured mission intent and action payloads, then persist missions in `mission_queue`.
+- Added `CommunicationControlEngine` to generate reply suggestions while preserving strict human approval before external communication.
+- Added new data tables:
+  - `market_intelligence_events`
+  - `opportunities`
+  - `admin_commands`
+  - `mission_queue`
+  - `conversation_context`
+- Added action spine support for:
+  - `MARKET_INTELLIGENCE_INGEST`
+  - `MARKET_INTELLIGENCE_SCAN`
+  - `ADMIN_COMMAND_PARSE`
+  - `ADMIN_COMMAND_CREATE_MISSION`
+  - `COMMUNICATION_SUGGEST_REPLY`
+- Extended NovaCore plan generation to detect admin natural-language mission directives and route them through the action spine (no bypass).

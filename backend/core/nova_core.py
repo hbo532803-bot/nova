@@ -10,6 +10,7 @@ from backend.execution.action_types import ActionType
 import re
 from backend.intelligence.playbooks.library import get_playbook
 from backend.intelligence.mission_planner import MissionPlanner
+from backend.intelligence.admin_command_engine import AdminCommandEngine
 
 
 class NovaCore:
@@ -23,6 +24,7 @@ class NovaCore:
         self.supervisor = SupervisorAgent()
         self.decision_matrix = DecisionMatrix()
         self.confidence = ConfidenceEngine()
+        self.admin_commands = AdminCommandEngine()
 
         # Prevent concurrent execution collisions
         self._lock = threading.Lock()
@@ -112,6 +114,30 @@ class NovaCore:
                 "confidence_after": confidence_score,
             }}}]
             plan["required_capabilities"] = ["analysis", "research", "growth_experimentation"]
+            decision = self.decision_matrix.evaluate(plan)
+            plan["decision_matrix"] = decision
+            return plan
+
+
+        # Admin natural-language command flow
+        if cmd.startswith("admin:") or any(x in cmd for x in ["find high intent leads", "build a website", "generate automation system"]):
+            parsed = self.admin_commands.parse_command(command_text=command, admin_user="admin")
+            plan["steps"] = ["execute"]
+            plan["actions"] = [
+                {
+                    "type": ActionType.ADMIN_COMMAND_PARSE.value,
+                    "payload": {"command_text": command, "admin_user": "admin"},
+                    "assumed_failure": "admin_command_parse_fails",
+                    "failure_impact": "mission_not_created",
+                },
+                {
+                    "type": ActionType.ADMIN_COMMAND_CREATE_MISSION.value,
+                    "payload": {"command_id": int(parsed["command_id"])},
+                    "assumed_failure": "mission_queue_insert_fails",
+                    "failure_impact": "admin_directive_not_executable",
+                },
+            ]
+            plan["required_capabilities"] = parsed.get("required_capabilities") or ["analysis"]
             decision = self.decision_matrix.evaluate(plan)
             plan["decision_matrix"] = decision
             return plan
