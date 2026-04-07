@@ -69,13 +69,9 @@ class ProfitIntelligenceEngine:
             )
             cost_row = cursor.fetchone()
 
-            cursor.execute("SELECT COALESCE(SUM(amount),0) AS revenue FROM revenue_events WHERE mission_id=?", (str(experiment_id),))
-            revenue_row = cursor.fetchone()
-            revenue_from_events = float((revenue_row["revenue"] or 0.0) if revenue_row else 0.0)
-
             cursor.execute(
                 """
-                SELECT COALESCE(revenue_generated,0) AS revenue_generated
+                SELECT COALESCE(revenue_generated,0) AS revenue_generated, COALESCE(capital_allocated,0) AS capital_allocated
                 FROM economic_experiments
                 WHERE id=?
                 """,
@@ -83,8 +79,13 @@ class ProfitIntelligenceEngine:
             )
             exp_row = cursor.fetchone()
 
+            revenue_parts = self._revenue_breakdown(cursor, int(experiment_id))
             base_revenue = float((exp_row["revenue_generated"] or 0.0) if exp_row else 0.0)
-            revenue_total = max(base_revenue, revenue_from_events, float(metrics.get("metrics", {}).get("paid_revenue") or 0.0))
+            revenue_real_payment = revenue_parts["real_payment"]
+            revenue_estimated = max(base_revenue, float(metrics.get("metrics", {}).get("paid_revenue") or 0.0), revenue_parts["estimated"])
+            revenue_simulated = revenue_parts["simulated"]
+            revenue_total = revenue_real_payment + revenue_estimated + revenue_simulated
+            revenue_source = "real_payment" if revenue_real_payment > 0 else ("simulated" if revenue_simulated > 0 else "estimated")
             real_cost = float((cost_row["real_cost"] or 0.0) if cost_row else 0.0)
             simulated_cost = float((cost_row["simulated_cost"] or 0.0) if cost_row else 0.0)
             cost_total = real_cost + simulated_cost
@@ -93,6 +94,7 @@ class ProfitIntelligenceEngine:
             total_leads = int(real.get("leads") or 0) + int(simulated.get("leads") or 0)
             real_users = int(real.get("unique_users") or 0)
             acquisitions = int(real.get("payments") or 0)
+            sessions = self._session_count(cursor, int(experiment_id))
 
             cost_per_click = (cost_total / total_clicks) if total_clicks else 0.0
             cost_per_lead = (cost_total / total_leads) if total_leads else 0.0
@@ -103,6 +105,11 @@ class ProfitIntelligenceEngine:
 
             windows = self._time_windows(cursor, int(experiment_id))
             growth_rate = windows["growth_rate"]
+            cost_per_day = windows["cost_per_day"]
+            cost_per_session = (real_cost / sessions) if sessions else 0.0
+            capital_allocated = float((exp_row["capital_allocated"] or 0.0) if exp_row else 0.0)
+            capital_used = real_cost
+            capital_remaining = max(0.0, capital_allocated - capital_used)
 
             cursor.execute(
                 """
@@ -114,11 +121,19 @@ class ProfitIntelligenceEngine:
                     cost_per_click=?,
                     cost_per_lead=?,
                     revenue_total=?,
+                    revenue_real_payment=?,
+                    revenue_estimated=?,
+                    revenue_simulated=?,
+                    revenue_source=?,
                     profit_total=?,
                     profit_per_user=?,
                     cac=?,
                     roi=?,
-                    growth_rate=?
+                    growth_rate=?,
+                    cost_per_day=?,
+                    cost_per_session=?,
+                    capital_used=?,
+                    capital_remaining=?
                 WHERE id=?
                 """,
                 (
@@ -128,15 +143,24 @@ class ProfitIntelligenceEngine:
                     cost_per_click,
                     cost_per_lead,
                     revenue_total,
+                    revenue_real_payment,
+                    revenue_estimated,
+                    revenue_simulated,
+                    revenue_source,
                     profit,
                     profit_per_user,
                     cac,
                     roi,
                     growth_rate,
+                    cost_per_day,
+                    cost_per_session,
+                    capital_used,
+                    capital_remaining,
                     int(experiment_id),
                 ),
             )
             conn.commit()
+        self.update_cashflow_summary()
 
         return {
             "experiment_id": int(experiment_id),
@@ -148,6 +172,12 @@ class ProfitIntelligenceEngine:
                 "cost_per_lead": round(cost_per_lead, 4),
             },
             "revenue_total": round(revenue_total, 4),
+            "revenue_source": revenue_source,
+            "revenue_components": {
+                "real_payment": round(revenue_real_payment, 4),
+                "estimated": round(revenue_estimated, 4),
+                "simulated": round(revenue_simulated, 4),
+            },
             "profit": round(profit, 4),
             "profit_per_user": round(profit_per_user, 4),
             "cac": round(cac, 4),
@@ -155,6 +185,11 @@ class ProfitIntelligenceEngine:
             "growth_rate": round(growth_rate, 4),
             "time_windows": windows,
             "reliability": reliability,
+            "capital": {
+                "capital_allocated": round(capital_allocated, 4),
+                "capital_used": round(capital_used, 4),
+                "capital_remaining": round(capital_remaining, 4),
+            },
         }
 
     def compare_experiments(self, *, limit: int = 100) -> Dict[str, Any]:
@@ -272,6 +307,37 @@ class ProfitIntelligenceEngine:
             (int(experiment_id),),
         )
         cost_7d = float((cursor.fetchone()["v"] or 0.0))
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(cost_amount),0) AS v
+            FROM experiment_cost_events
+            WHERE experiment_id=? AND is_simulated=0
+              AND created_at < datetime('now','-24 hours')
+              AND created_at >= datetime('now','-48 hours')
+            """,
+            (int(experiment_id),),
+        )
+        cost_prev_24h = float((cursor.fetchone()["v"] or 0.0))
+        cursor.execute(
+            """
+            SELECT COALESCE(AVG(CASE WHEN event_type='lead' THEN 1.0 ELSE 0.0 END),0) AS v
+            FROM real_signal_events
+            WHERE experiment_id=? AND is_simulated=0 AND created_at >= datetime('now','-24 hours')
+            """,
+            (int(experiment_id),),
+        )
+        conv_24h = float((cursor.fetchone()["v"] or 0.0))
+        cursor.execute(
+            """
+            SELECT COALESCE(AVG(CASE WHEN event_type='lead' THEN 1.0 ELSE 0.0 END),0) AS v
+            FROM real_signal_events
+            WHERE experiment_id=? AND is_simulated=0
+              AND created_at < datetime('now','-24 hours')
+              AND created_at >= datetime('now','-48 hours')
+            """,
+            (int(experiment_id),),
+        )
+        conv_prev_24h = float((cursor.fetchone()["v"] or 0.0))
 
         profit_24h = rev_24h - cost_24h
         profit_7d = rev_7d - cost_7d
@@ -280,5 +346,63 @@ class ProfitIntelligenceEngine:
         return {
             "last_24h_profit": round(profit_24h, 4),
             "last_7_days_profit": round(profit_7d, 4),
+            "cost_last_24h": round(cost_24h, 4),
+            "cost_prev_24h": round(cost_prev_24h, 4),
+            "conversion_last_24h": round(conv_24h, 4),
+            "conversion_prev_24h": round(conv_prev_24h, 4),
+            "cost_per_day": round(cost_7d / 7.0, 4),
+            "cost_increasing_without_conversion": bool(cost_24h > cost_prev_24h and conv_24h <= conv_prev_24h),
             "growth_rate": round(growth_rate, 4),
         }
+
+    def _session_count(self, cursor: Any, experiment_id: int) -> int:
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT session_id) AS n
+            FROM session_journey
+            WHERE experiment_id=? AND data_source='real'
+            """,
+            (int(experiment_id),),
+        )
+        row = cursor.fetchone()
+        return int((row["n"] or 0) if row else 0)
+
+    def _revenue_breakdown(self, cursor: Any, experiment_id: int) -> Dict[str, float]:
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN status='CONFIRMED' AND source='real_payment' THEN amount ELSE 0 END),0) AS real_payment,
+                COALESCE(SUM(CASE WHEN source='simulated' THEN amount ELSE 0 END),0) AS simulated,
+                COALESCE(SUM(CASE WHEN status!='CONFIRMED' OR source!='real_payment' THEN amount ELSE 0 END),0) AS estimated
+            FROM revenue_events
+            WHERE mission_id=?
+            """,
+            (str(experiment_id),),
+        )
+        row = cursor.fetchone()
+        return {
+            "real_payment": float((row["real_payment"] or 0.0) if row else 0.0),
+            "estimated": float((row["estimated"] or 0.0) if row else 0.0),
+            "simulated": float((row["simulated"] or 0.0) if row else 0.0),
+        }
+
+    def update_cashflow_summary(self) -> Dict[str, float]:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COALESCE(SUM(cost_real_total),0) AS spent, COALESCE(SUM(revenue_real_payment),0) AS earned FROM economic_experiments")
+            row = cursor.fetchone()
+            total_spent = float((row["spent"] or 0.0) if row else 0.0)
+            total_earned = float((row["earned"] or 0.0) if row else 0.0)
+            net_balance = total_earned - total_spent
+            cursor.execute(
+                """
+                UPDATE capital_pool
+                SET total_capital = total_capital,
+                    available_capital = (?),
+                    reserved_capital = reserved_capital
+                WHERE id=1
+                """,
+                (max(0.0, net_balance),),
+            )
+            conn.commit()
+        return {"total_spent": round(total_spent, 4), "total_earned": round(total_earned, 4), "net_balance": round(net_balance, 4)}

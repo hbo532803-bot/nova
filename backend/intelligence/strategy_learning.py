@@ -74,7 +74,7 @@ class StrategyLearningEngine:
             preferred = self._preferred_playbooks_for_cluster(best_cluster)
             if preferred:
                 adjustments.append(StrategyAdjustment("preferred_playbooks", preferred, "best_cluster"))
-                self._record_strategy_pattern(best_cluster)
+                self._record_strategy_pattern(best_cluster, preferred[0] if preferred else "unknown")
 
         return self._persist(
             adjustments,
@@ -229,7 +229,7 @@ class StrategyLearningEngine:
             logging.getLogger(__name__).exception("Suppressed exception in strategy_learning.py")
         return {"ok": True, "strategy": payload}
 
-    def _record_strategy_pattern(self, strategy_type: str) -> None:
+    def _record_strategy_pattern(self, strategy_type: str, funnel_type: str) -> None:
         comparison = self.profit_engine.compare_experiments(limit=100)
         ranking = comparison.get("ranking") or []
         if not ranking:
@@ -237,18 +237,43 @@ class StrategyLearningEngine:
         profitable = [x for x in ranking if float(x.get("profit") or 0.0) > 0]
         success_rate = len(profitable) / max(1, len(ranking))
         avg_profit = sum(float(x.get("profit") or 0.0) for x in ranking) / max(1, len(ranking))
+        top_experiment = int((ranking[0] or {}).get("experiment_id") or 0)
+        niche = "unknown"
+        traffic_source = "unknown"
+        if top_experiment > 0:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM economic_experiments WHERE id=?", (top_experiment,))
+                exp_row = cursor.fetchone()
+                niche = str((exp_row["name"] if exp_row else "unknown") or "unknown")
+                cursor.execute(
+                    """
+                    SELECT traffic_source, COUNT(*) AS n
+                    FROM session_journey
+                    WHERE experiment_id=?
+                    GROUP BY traffic_source
+                    ORDER BY n DESC
+                    LIMIT 1
+                    """,
+                    (top_experiment,),
+                )
+                src_row = cursor.fetchone()
+                traffic_source = str((src_row["traffic_source"] if src_row else "unknown") or "unknown")
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO strategy_patterns (strategy_type, success_rate, avg_profit, sample_size, last_seen)
-                VALUES (?, ?, ?, ?, datetime('now'))
+                INSERT INTO strategy_patterns (strategy_type, success_rate, avg_profit, sample_size, niche, traffic_source, funnel_type, last_seen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(strategy_type) DO UPDATE SET
                     success_rate=excluded.success_rate,
                     avg_profit=excluded.avg_profit,
                     sample_size=excluded.sample_size,
+                    niche=excluded.niche,
+                    traffic_source=excluded.traffic_source,
+                    funnel_type=excluded.funnel_type,
                     last_seen=datetime('now')
                 """,
-                (strategy_type, success_rate, avg_profit, len(ranking)),
+                (strategy_type, success_rate, avg_profit, len(ranking), niche, traffic_source, funnel_type),
             )
             conn.commit()

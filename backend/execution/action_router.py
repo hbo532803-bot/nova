@@ -19,6 +19,9 @@ from backend.intelligence.experiment_lifecycle import ExperimentLifecycleEngine
 from backend.knowledge.graph_store import KnowledgeGraphStore
 from backend.intelligence.research_engine import ResearchEngine
 from backend.runtime.agent_factory import AgentFactory
+from backend.intelligence.traffic_engine import TrafficEngine
+from backend.intelligence.revenue_execution_engine import RevenueExecutionEngine
+from backend.intelligence.lead_interaction_engine import LeadInteractionEngine
 
 
 class ActionRouter:
@@ -41,6 +44,9 @@ class ActionRouter:
         self.kg = KnowledgeGraphStore()
         self.research = ResearchEngine()
         self.agent_factory = AgentFactory()
+        self.traffic = TrafficEngine()
+        self.revenue_execution = RevenueExecutionEngine()
+        self.leads = LeadInteractionEngine()
 
     def run(self, action: Dict[str, Any], plan: Dict[str, Any]) -> Any:
         action_type = ActionType(str(action.get("type")))
@@ -167,5 +173,49 @@ class ActionRouter:
         if action_type == ActionType.AGENT_FACTORY_EVOLVE:
             return self.agent_factory.evolve_specs()
 
-        raise RuntimeError(f"Unknown action type: {action_type}")
+        if action_type == ActionType.TRAFFIC_GENERATE:
+            return self.traffic.generate_traffic(
+                mission_id=str(payload.get("mission_id") or plan.get("mission_id") or ""),
+                channel=str(payload.get("channel") or "content_posts"),
+                volume=int(payload.get("volume") or 0),
+                quality_score=float(payload.get("quality_score") or 0.5),
+                experiment_id=(int(payload.get("experiment_id")) if payload.get("experiment_id") is not None else None),
+                mode=str(payload.get("mode") or "manual"),
+            )
 
+        if action_type == ActionType.EXECUTION_APPLY_PRIORITY:
+            return self.revenue_execution.execute_for_experiment(
+                int(payload.get("experiment_id")),
+                priority_level=str(payload.get("priority_level") or "LOW"),
+                decision=str(payload.get("decision") or "hold"),
+            )
+
+        if action_type == ActionType.EXECUTION_RUN_PENDING:
+            exp = payload.get("experiment_id")
+            return self.revenue_execution.run_pending_actions(experiment_id=(int(exp) if exp is not None else None))
+
+        if action_type == ActionType.LEAD_CAPTURE:
+            return self.leads.capture_lead(
+                mission_id=str(payload.get("mission_id") or ""),
+                name=str(payload.get("name") or "unknown"),
+                email=str(payload.get("email") or ""),
+                phone=str(payload.get("phone") or ""),
+                source=str(payload.get("source") or "inbound"),
+                metadata=(payload.get("metadata") or {}),
+            )
+
+        if action_type == ActionType.LEAD_QUEUE_MESSAGE:
+            return self.leads.queue_message_for_approval(
+                lead_id=int(payload.get("lead_id")),
+                experiment_id=int(payload.get("experiment_id")),
+                channel=str(payload.get("channel") or "email"),
+                message_body=str(payload.get("message_body") or ""),
+            )
+
+        if action_type == ActionType.LEAD_APPROVE_MESSAGE:
+            return self.leads.approve_queued_message(
+                queue_id=int(payload.get("queue_id")),
+                approved_by=str(payload.get("approved_by") or "admin"),
+            )
+
+        raise RuntimeError(f"Unknown action type: {action_type}")

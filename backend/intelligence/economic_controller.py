@@ -7,6 +7,7 @@ from backend.intelligence.roi_engine import ROIEngine
 from backend.intelligence.metrics_engine import MetricsEngine
 from backend.intelligence.metric_decision_engine import MetricDecisionEngine
 from backend.intelligence.profit_intelligence_engine import ProfitIntelligenceEngine
+from backend.intelligence.revenue_execution_engine import RevenueExecutionEngine
 
 
 class EconomicController:
@@ -16,6 +17,7 @@ class EconomicController:
         "APPROVED",
         "TESTING",
         "LIVE",
+        "PAUSED",
         "SCALING",
         "FAILED",
         "ARCHIVED"
@@ -28,6 +30,7 @@ class EconomicController:
         self.metrics_engine = MetricsEngine()
         self.metric_decider = MetricDecisionEngine()
         self.profit_engine = ProfitIntelligenceEngine()
+        self.execution_engine = RevenueExecutionEngine()
 
     # =========================================================
     # CORE ECONOMIC LOOP
@@ -57,17 +60,27 @@ class EconomicController:
 
             roi_update = self.allocate_capital(exp_id)
             priority_update = self.profit_engine.update_priority(exp_id)
+            hard_stop = self.enforce_hard_stop_rules(exp_id)
             kill_result = self.auto_kill_if_needed(exp_id)
             lifecycle = self.evaluate_progress(exp_id)
             metric_decision = self.apply_metric_decision(exp_id)
+            execution_plan = self.execution_engine.execute_for_experiment(
+                int(exp_id),
+                priority_level=str((priority_update or {}).get("priority_level") or "LOW"),
+                decision=str((metric_decision or {}).get("decision") or "hold"),
+            )
+            execution_result = self.execution_engine.run_pending_actions(experiment_id=int(exp_id))
 
             results.append({
                 "experiment_id": exp_id,
                 "roi_update": roi_update,
                 "priority_update": priority_update,
+                "hard_stop": hard_stop,
                 "kill_check": kill_result,
                 "lifecycle": lifecycle,
                 "metric_decision": metric_decision,
+                "execution_plan": execution_plan,
+                "execution_result": execution_result,
             })
 
         comparison = self.profit_engine.compare_experiments(limit=max(20, len(results)))
@@ -149,9 +162,13 @@ class EconomicController:
         with get_db() as conn:
 
             cursor = conn.cursor()
+            cursor.execute("SELECT total_capital FROM capital_pool WHERE id=1")
+            pool = cursor.fetchone()
+            total_capital = float((pool["total_capital"] or 0.0) if pool else 0.0)
+            cap_limit = max(100.0, total_capital * 0.25)
 
             cursor.execute("""
-                SELECT capital_allocated
+                SELECT capital_allocated, cost_real_total
                 FROM economic_experiments
                 WHERE id = ?
             """, (experiment_id,))
@@ -159,6 +176,7 @@ class EconomicController:
             row = cursor.fetchone()
 
             capital = row["capital_allocated"] if row else 0
+            used = float((row["cost_real_total"] or 0.0) if row else 0.0)
 
             if capital == 0:
                 capital = 100
@@ -172,12 +190,14 @@ class EconomicController:
             elif roi < 0 or level == "LOW":
                 capital *= 0.5
                 self.confidence.adjust(-1)
+            capital = min(capital, cap_limit)
+            capital_remaining = max(0.0, capital - used)
 
             cursor.execute("""
                 UPDATE economic_experiments
-                SET capital_allocated = ?
+                SET capital_allocated = ?, capital_used=?, capital_remaining=?, capital_cap=?
                 WHERE id = ?
-            """, (capital, experiment_id))
+            """, (capital, used, capital_remaining, cap_limit, experiment_id))
 
             conn.commit()
 
@@ -185,6 +205,9 @@ class EconomicController:
             "roi": roi,
             "priority_level": priority.get("priority_level"),
             "new_capital": capital,
+            "capital_used": used,
+            "capital_remaining": capital_remaining,
+            "capital_cap": cap_limit,
             "consecutive_losses": roi_result["consecutive_losses"]
         }
 
@@ -247,10 +270,12 @@ class EconomicController:
         current_status = str(row["status"] or "")
         next_status = current_status
 
-        if decision["decision"] == "scale" and float(economics.get("roi") or 0.0) > 0:
+        reliable = bool((economics.get("reliability") or {}).get("is_data_reliable"))
+        has_real_revenue = float((economics.get("revenue_components") or {}).get("real_payment") or 0.0) > 0
+        if decision["decision"] == "scale" and float(economics.get("roi") or 0.0) > 0 and reliable and has_real_revenue:
             next_status = "SCALING"
         elif decision["decision"] == "scale":
-            decision = {"decision": "hold", "reason": "roi_not_positive"}
+            decision = {"decision": "hold", "reason": "requires_reliable_real_payment_revenue"}
         elif decision["decision"] == "fail":
             next_status = "FAILED"
         elif decision["decision"] == "optimize" and current_status in {"LIVE", "SCALING"}:
@@ -290,9 +315,37 @@ class EconomicController:
             "economics": {
                 "profit": economics.get("profit"),
                 "roi": economics.get("roi"),
+                "revenue_source": economics.get("revenue_source"),
                 "priority": self.profit_engine.update_priority(experiment_id).get("priority_level"),
             },
         }
+
+    def enforce_hard_stop_rules(self, experiment_id):
+        economics = self.profit_engine.update_profit_snapshot(int(experiment_id))
+        reliable = bool((economics.get("reliability") or {}).get("is_data_reliable"))
+        roi = float(economics.get("roi") or 0.0)
+        trend = economics.get("time_windows") or {}
+        cost_without_conversion = bool(trend.get("cost_increasing_without_conversion"))
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT status FROM economic_experiments WHERE id=?", (int(experiment_id),))
+            row = cursor.fetchone()
+            if not row:
+                return {"status": "unknown"}
+            current = str(row["status"] or "")
+
+            if reliable and roi < 0:
+                cursor.execute("UPDATE economic_experiments SET status='FAILED', last_tested=? WHERE id=?", (datetime.utcnow(), int(experiment_id)))
+                conn.commit()
+                return {"status": "STOP", "reason": "negative_roi_with_reliable_sample", "from": current, "to": "FAILED"}
+
+            if cost_without_conversion and current not in {"FAILED", "ARCHIVED"}:
+                cursor.execute("UPDATE economic_experiments SET status='PAUSED', last_tested=? WHERE id=?", (datetime.utcnow(), int(experiment_id)))
+                conn.commit()
+                return {"status": "PAUSE", "reason": "cost_increasing_without_conversion_improvement", "from": current, "to": "PAUSED"}
+
+        return {"status": "NO_ACTION"}
 
     # =========================================================
     # REVENUE UPDATE

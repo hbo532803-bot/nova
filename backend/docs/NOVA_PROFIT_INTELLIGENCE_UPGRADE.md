@@ -71,6 +71,10 @@ Capabilities:
    - LOW or negative ROI -> reduce capital.
 5. **Real vs simulated isolation**:
    - Profit/ROI decisions use real cost baseline.
+6. **Real economic validity hardening**:
+   - Scaling uses reliable samples + positive ROI + real payment revenue only.
+   - Hard stop if ROI < 0 on reliable data.
+   - Pause if cost rises while conversion does not improve.
 
 ## 5) Example Flow
 
@@ -103,3 +107,15 @@ Capabilities:
 5. **Portfolio ranking**
    - Input: multiple active experiments
    - Expected: ranked list + best experiment returned
+
+## 7) Execution + Revenue Readiness
+
+- Added active execution queue: `execution_actions`
+- Added communication approval queue: `communication_queue`
+- Added lead intent fields in `leads` (`intent_level`, `intent_score`)
+- Action loop now supports:
+  - traffic generation
+  - priority-based execution plans
+  - pending execution processing
+  - lead capture/classification
+  - message approval workflow (no auto messaging)
