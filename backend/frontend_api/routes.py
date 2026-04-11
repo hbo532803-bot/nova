@@ -1062,6 +1062,27 @@ def social_suggest_dm(lead_id: int, payload: dict | None = None, admin=Depends(g
     return result
 
 
+@router.post("/social/replies/{queue_id}/mark-sent")
+def social_mark_sent(queue_id: int, admin=Depends(get_current_admin)):
+    result = _social_growth_engine.mark_reply_sent(queue_id=queue_id, admin_user=str(admin.get("username")))
+    _social_growth_engine.append_activity(action="reply_mark_sent", details={"queue_id": queue_id, "admin": admin.get("username"), "result": result})
+    return result
+
+
+@router.post("/social/leads/{social_lead_id}/convert")
+def social_convert_lead(social_lead_id: int, payload: dict, admin=Depends(get_current_admin)):
+    amount = float(payload.get("amount") or 0)
+    response_state = str(payload.get("response_state") or "accepted")
+    result = _social_growth_engine.mark_conversion(
+        social_lead_id=social_lead_id,
+        amount=amount,
+        admin_user=str(admin.get("username")),
+        response_state=response_state,
+    )
+    _social_growth_engine.append_activity(action="lead_converted", details={"social_lead_id": social_lead_id, "amount": amount, "admin": admin.get("username"), "result": result})
+    return result
+
+
 @router.get("/social/console")
 def social_console(admin=Depends(get_current_admin)):
     return _social_growth_engine.get_console_snapshot()

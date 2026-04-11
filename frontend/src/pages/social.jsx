@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import MainLayout from "../components/layout/MainLayout";
 import {
+  convertSocialLead,
   generateSocialContent,
   getSocialConsole,
   updateSocialContentStatus,
@@ -16,11 +17,17 @@ export default function SocialPage() {
     platform_performance: []
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const load = async () => {
     setLoading(true);
-    const res = await getSocialConsole();
-    setData(res || {});
+    setError("");
+    try {
+      const res = await getSocialConsole();
+      setData(res || {});
+    } catch (err) {
+      setError(err.message || "Failed to load social console.");
+    }
     setLoading(false);
   };
 
@@ -29,13 +36,32 @@ export default function SocialPage() {
   }, []);
 
   const decidePost = async (id, status) => {
-    await updateSocialContentStatus(id, status);
-    await load();
+    try {
+      await updateSocialContentStatus(id, status);
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to update post status.");
+    }
   };
 
   const decideReply = async (id, status) => {
-    await updateSocialReplyStatus(id, status);
-    await load();
+    try {
+      await updateSocialReplyStatus(id, status);
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to update reply status.");
+    }
+  };
+
+  const convertLead = async (leadId) => {
+    const amount = Number(window.prompt("Confirmed revenue amount (USD):", "1200") || 0);
+    if (!amount || amount <= 0) return;
+    try {
+      await convertSocialLead(leadId, amount);
+      await load();
+    } catch (err) {
+      setError(err.message || "Failed to convert lead.");
+    }
   };
 
   return (
@@ -46,10 +72,16 @@ export default function SocialPage() {
           Human-in-the-loop only: all posts, replies, and DMs remain approval-based.
         </p>
 
+        {error ? <p style={{ color: "#f87171" }}>{error}</p> : null}
+
         <button
           onClick={async () => {
-            await generateSocialContent("Shipped NOVA market + social growth system with approval controls.");
-            await load();
+            try {
+              await generateSocialContent("Shipped NOVA social-to-revenue pipeline with offer and ROI tracking.");
+              await load();
+            } catch (err) {
+              setError(err.message || "Failed to generate content suggestions.");
+            }
           }}
           style={{ marginBottom: 18 }}
         >
@@ -88,7 +120,10 @@ export default function SocialPage() {
         <h2>Detected Leads</h2>
         <ul>
           {(data.detected_leads || []).map((lead) => (
-            <li key={lead.id}>{lead.platform} · @{lead.username} · {lead.intent_level}</li>
+            <li key={lead.id}>
+              {lead.platform} · @{lead.username} · {lead.intent_level} · {lead.pipeline_status || "offer_generated"}
+              <button style={{ marginLeft: 8 }} onClick={() => convertLead(lead.id)}>Mark Conversion</button>
+            </li>
           ))}
         </ul>
 
@@ -96,6 +131,15 @@ export default function SocialPage() {
         <ul>
           {(data.platform_performance || []).map((p) => (
             <li key={p.platform}>{p.platform}: {p.published || 0} published / {p.posts || 0} total</li>
+          ))}
+        </ul>
+
+        <h2>Social ROI</h2>
+        <ul>
+          {(data.social_roi || []).map((row) => (
+            <li key={row.platform}>
+              {row.platform}: leads {Math.round(row.leads || 0)} · conversions {Math.round(row.conversions || 0)} · revenue ${Number(row.revenue || 0).toFixed(2)}
+            </li>
           ))}
         </ul>
       </div>

@@ -1,35 +1,33 @@
-import { API_BASE_URL } from "./apiConfig";
-
-const API = `${API_BASE_URL}/api`;
+import { apiRequest } from "./http";
 
 export async function getSocialConsole() {
-  const res = await fetch(`${API}/social/console`);
-  return res.json();
+  return apiRequest("/api/social/console");
 }
 
 export async function generateSocialContent(progress_update = "") {
-  const res = await fetch(`${API}/social/content/generate`, {
+  return apiRequest("/api/social/content/generate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ progress_update, limit: 6 })
   });
-  return res.json();
 }
 
 export async function updateSocialContentStatus(contentId, status) {
-  const res = await fetch(`${API}/social/content/${contentId}/status`, {
+  return apiRequest(`/api/social/content/${contentId}/status`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status })
   });
-  return res.json();
 }
 
 export async function updateSocialReplyStatus(queueId, status) {
-  const res = await fetch(`${API}/social/replies/${queueId}/status`, {
+  return apiRequest(`/api/social/replies/${queueId}/status`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status })
   });
-  return res.json();
+}
+
+export async function convertSocialLead(leadId, amount) {
+  return apiRequest(`/api/social/leads/${leadId}/convert`, {
+    method: "POST",
+    body: JSON.stringify({ amount, response_state: "accepted" })
+  });
 }

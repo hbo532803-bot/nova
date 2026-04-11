@@ -706,6 +706,27 @@ def initialize_all_tables(reset: bool = False):
             """)
 
             cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_conversion_pipeline (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                social_lead_id INTEGER NOT NULL,
+                lead_id INTEGER,
+                conversion_attempt_id INTEGER,
+                post_id TEXT,
+                platform TEXT NOT NULL,
+                status TEXT DEFAULT 'offer_generated',
+                response_state TEXT DEFAULT 'pending',
+                revenue_amount REAL DEFAULT 0,
+                converted_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_social_conversion_lookup
+            ON social_conversion_pipeline(platform, status, created_at)
+            """)
+
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS session_journey (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 mission_id TEXT NOT NULL,
