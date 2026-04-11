@@ -33,6 +33,8 @@ export default function SocialPage() {
 
   useEffect(() => {
     load();
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
   }, []);
 
   const decidePost = async (id, status) => {
@@ -87,10 +89,12 @@ export default function SocialPage() {
         >
           Generate Content Suggestions
         </button>
+        <button onClick={load} style={{ marginLeft: 8, marginBottom: 18 }}>Refresh Console</button>
 
         {loading ? <p>Loading…</p> : null}
 
         <h2>Pending Posts</h2>
+        {(!data.pending_posts || data.pending_posts.length === 0) ? <p style={{ color: "#94a3b8" }}>No posts pending approval.</p> : null}
         {(data.pending_posts || []).map((post) => (
           <div key={post.id} style={{ border: "1px solid #1e293b", borderRadius: 8, padding: 12, marginBottom: 10 }}>
             <div><strong>{post.platform}</strong> · {post.content_type}</div>
@@ -106,6 +110,7 @@ export default function SocialPage() {
         ))}
 
         <h2>Suggested Replies / DMs</h2>
+        {(!data.pending_replies || data.pending_replies.length === 0) ? <p style={{ color: "#94a3b8" }}>No replies waiting for review.</p> : null}
         {(data.pending_replies || []).map((reply) => (
           <div key={reply.id} style={{ border: "1px solid #1e293b", borderRadius: 8, padding: 12, marginBottom: 10 }}>
             <div><strong>@{reply.username}</strong> on {reply.platform}</div>
@@ -124,6 +129,13 @@ export default function SocialPage() {
               {lead.platform} · @{lead.username} · {lead.intent_level} · {lead.pipeline_status || "offer_generated"}
               <button style={{ marginLeft: 8 }} onClick={() => convertLead(lead.id)}>Mark Conversion</button>
             </li>
+          ))}
+        </ul>
+
+        <h2>Activity Logs</h2>
+        <ul>
+          {(data.activity_logs || []).slice(0, 20).map((log, idx) => (
+            <li key={`${log.created_at}-${idx}`}>{log.created_at}: {log.action}</li>
           ))}
         </ul>
 

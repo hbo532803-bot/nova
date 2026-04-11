@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNovaStore } from "../state/novaStore";
+import { API_BASE_URL } from "../services/apiConfig";
 
 export default function useEventBus() {
   const setLogs = useNovaStore((s) => s.setLogs);
@@ -17,7 +18,8 @@ export default function useEventBus() {
     try {
       const token = localStorage.getItem("nova_token") || "";
       const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-      ws = new WebSocket(`ws://localhost:8000/ws${qs}`);
+      const wsBase = API_BASE_URL.replace(/^http/i, "ws");
+      ws = new WebSocket(`${wsBase}/ws${qs}`);
       ws.onmessage = (msg) => {
         try {
           const event = JSON.parse(msg.data);
@@ -42,4 +44,3 @@ export default function useEventBus() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
-

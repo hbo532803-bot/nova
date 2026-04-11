@@ -1,18 +1,19 @@
 import { apiRequest } from "./http";
 
 export async function getExperiments() {
-  return apiRequest("/api/experiments");
+  const data = await apiRequest("/api/experiments");
+  return data?.experiments || [];
 }
 
 export async function runExperiment(data) {
-  return apiRequest("/api/experiments/run", {
-    method: "POST",
-    body: JSON.stringify(data)
-  });
+  const id = data?.id;
+  if (!id) throw new Error("Experiment id is required");
+  return apiRequest(`/api/experiments/${id}/run`, { method: "POST" });
 }
 
 export async function stopExperiment(id) {
-  return apiRequest(`/api/experiments/${id}/stop`, {
-    method: "POST"
+  return apiRequest("/api/commands", {
+    method: "POST",
+    body: JSON.stringify({ text: `stop experiment ${id}` })
   });
 }

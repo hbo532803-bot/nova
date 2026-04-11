@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../services/apiConfig";
 
@@ -11,6 +11,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  useEffect(() => {
+    if (localStorage.getItem("nova_token")) {
+      navigate("/dashboard");
+    }
+  }, [navigate]);
 
   async function login() {
     setError("");
@@ -50,8 +55,9 @@ export default function Login() {
   }
 
   return (
-    <div style={{ padding: 40 }}>
+    <div style={{ padding: 40, maxWidth: 420, margin: "40px auto", background: "#020617", border: "1px solid #1e293b", borderRadius: 12 }}>
       <h1>NOVA LOGIN</h1>
+      <p style={{ color: "#94a3b8" }}>Admin access required.</p>
 
       <input placeholder="username" onChange={(e) => setUsername(e.target.value)} />
 

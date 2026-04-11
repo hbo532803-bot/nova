@@ -1,18 +1,19 @@
 import { API_BASE_URL } from "./apiConfig";
 
 export async function apiRequest(path, options = {}) {
+  const { auth = true, ...requestOptions } = options;
   const token = localStorage.getItem("nova_token");
   const headers = {
-    ...(options.body ? { "Content-Type": "application/json" } : {}),
-    ...(options.headers || {})
+    ...(requestOptions.body ? { "Content-Type": "application/json" } : {}),
+    ...(requestOptions.headers || {})
   };
 
-  if (token) {
+  if (auth && token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...requestOptions,
     headers
   });
 
