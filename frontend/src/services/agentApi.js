@@ -1,27 +1,21 @@
-import { API_BASE_URL } from "./apiConfig";
-
-const API = `${API_BASE_URL}/api`;
+import { apiRequest } from "./http";
 
 export async function getAgents() {
-  const res = await fetch(`${API}/agents`);
-  return res.json();
+  return apiRequest("/api/agents");
 }
 
 export async function getAgentStatus(id) {
-  const res = await fetch(`${API}/agents/${id}/status`);
-  return res.json();
+  return apiRequest(`/api/agents/${id}/status`);
 }
 
 export async function startAgent(id) {
-  const res = await fetch(`${API}/agents/${id}/start`, {
+  return apiRequest(`/api/agents/${id}/start`, {
     method: "POST"
   });
-  return res.json();
 }
 
 export async function stopAgent(id) {
-  const res = await fetch(`${API}/agents/${id}/stop`, {
+  return apiRequest(`/api/agents/${id}/stop`, {
     method: "POST"
   });
-  return res.json();
 }

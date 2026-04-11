@@ -1,38 +1,4 @@
-const API = (import.meta.env.VITE_API_BASE || "http://localhost:8000").replace(/\/$/, "");
-
-function token() {
-  return localStorage.getItem("nova_token");
-}
-
-async function request(url, options = {}) {
-  const authToken = token();
-  const headers = {
-    "Content-Type": "application/json",
-    ...(options.headers || {}),
-  };
-
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`;
-  }
-
-  const res = await fetch(`${API}${url}`, {
-    ...options,
-    headers,
-  });
-
-  if (res.status === 401) {
-    localStorage.removeItem("nova_token");
-    window.location = "/login";
-    return;
-  }
-
-  if (!res.ok) {
-    const payload = await res.json().catch(() => ({}));
-    throw new Error(payload.detail || "API request failed");
-  }
-
-  return res.json();
-}
+import { apiRequest as request } from "./http";
 
 export function fetchDashboard() {
   return request("/api/nova/dashboard");
