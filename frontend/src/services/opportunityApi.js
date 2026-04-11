@@ -1,23 +1,18 @@
-import { API_BASE_URL } from "./apiConfig";
-
-const API = `${API_BASE_URL}/api`;
+import { apiRequest } from "./http";
 
 export async function getOpportunities() {
-  const res = await fetch(`${API}/opportunities`);
-  return res.json();
+  const data = await apiRequest("/api/opportunities");
+  return data?.proposals || [];
 }
 
 export async function getOpportunity(id) {
-  const res = await fetch(`${API}/opportunities/${id}`);
-  return res.json();
+  const list = await getOpportunities();
+  return list.find((o) => Number(o.id) === Number(id)) || null;
 }
 
 export async function createOpportunity(data) {
-  const res = await fetch(`${API}/opportunities`, {
+  return apiRequest("/api/commands", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data)
+    body: JSON.stringify({ text: `research ${data?.name || "opportunity"}` })
   });
-
-  return res.json();
 }

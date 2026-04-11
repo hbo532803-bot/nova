@@ -43,6 +43,9 @@ export default function useNovaSystem(){
   const setKnowledgeInsights = useNovaStore(s=>s.setKnowledgeInsights);
   const setCognitiveLast = useNovaStore(s=>s.setCognitiveLast);
   const setResearchLast = useNovaStore(s=>s.setResearchLast);
+  const setApiError = useNovaStore(s=>s.setApiError);
+  const setLoading = useNovaStore(s=>s.setLoading);
+  const setInitialized = useNovaStore(s=>s.setInitialized);
 
   useEffect(()=>{
 
@@ -53,6 +56,8 @@ export default function useNovaSystem(){
     async function load(){
 
       try{
+        if (!useNovaStore.getState().initialized) setLoading(true);
+        setApiError("");
         if (inFlight) return;
         inFlight = true;
         tick += 1;
@@ -117,10 +122,13 @@ export default function useNovaSystem(){
       catch(e){
 
         console.error("Nova load failed",e);
+        setApiError("Unable to load admin data. Check backend connectivity and token.");
 
       }
       finally{
         inFlight = false;
+        setLoading(false);
+        setInitialized(true);
       }
 
     }
@@ -129,7 +137,10 @@ export default function useNovaSystem(){
 
     const timer = setInterval(load,5000);
 
-    return ()=>clearInterval(timer);
+    return ()=>{
+      abort?.abort?.();
+      clearInterval(timer);
+    };
 
   },[]);
 }

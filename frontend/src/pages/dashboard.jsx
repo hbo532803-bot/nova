@@ -1,6 +1,7 @@
 import MainLayout from "../components/layout/MainLayout";
 import useNovaSystem from "../hooks/useNovaSystem";
 import useEventBus from "../hooks/useEventBus";
+import { useNovaStore } from "../state/novaStore";
 
 import SystemMetrics from "../components/dashboard/SystemMetrics";
 import ActivityStream from "../components/logs/ActivityStream";
@@ -16,10 +17,16 @@ import "../styles/admin.css";
 export default function Dashboard() {
   useNovaSystem();
   useEventBus();
+  const loading = useNovaStore((s) => s.loading);
+  const apiError = useNovaStore((s) => s.apiError);
+  const realtimeFallback = useNovaStore((s) => s.realtimeFallback);
 
   return (
     <MainLayout>
       <div className="admin-page">
+        {apiError ? <p className="admin-error">{apiError}</p> : null}
+        {realtimeFallback ? <p className="admin-subtext">Real-time feed unavailable. Running in polling fallback mode.</p> : null}
+        {loading ? <p className="admin-subtext">Loading live system state…</p> : null}
         <SystemMetrics />
 
         <div className="admin-grid">

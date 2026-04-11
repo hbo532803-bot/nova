@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 
 import LandingPage from "../../pages/landing";
 import ProductPage from "../../pages/product";
@@ -9,6 +9,7 @@ import Opportunities from "../../pages/opportunities";
 import Execution from "../../pages/execution";
 import Experiments from "../../pages/experiments";
 import Logs from "../../pages/logs";
+import SocialPage from "../../pages/social";
 
 import ProtectedRoute from "../auth/ProtectedRoute";
 
@@ -73,6 +74,16 @@ export default function AppRouter() {
             </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/social"
+          element={
+            <ProtectedRoute>
+              <SocialPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

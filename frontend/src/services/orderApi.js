@@ -1,22 +1,7 @@
-import { API_BASE_URL } from "./apiConfig";
-
-const API = `${API_BASE_URL}/api/order`;
+import { apiRequest } from "./http";
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
-
-  if (!res.ok) {
-    const details = await res.text();
-    throw new Error(details || "Order API request failed");
-  }
-
-  return res.json();
+  return apiRequest(`/api/order${path}`, { auth: false, ...options });
 }
 
 export function createOrder(input, details = {}) {

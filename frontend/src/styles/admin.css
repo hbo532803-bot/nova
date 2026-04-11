@@ -23,6 +23,15 @@
   margin-bottom: 10px;
 }
 
+.admin-error {
+  background: #3f1d1d;
+  border: 1px solid #7f1d1d;
+  color: #fecaca;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 0;
+}
+
 .admin-table-wrap {
   overflow-x: auto;
 }
