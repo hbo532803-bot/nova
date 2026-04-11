@@ -23,6 +23,7 @@ export default function Sidebar() {
         <NavLink to="/agents" style={linkStyle}>Agents</NavLink>
         <NavLink to="/opportunities" style={linkStyle}>Opportunities</NavLink>
         <NavLink to="/execution" style={linkStyle}>Execution</NavLink>
+        <NavLink to="/social" style={linkStyle}>Social Growth</NavLink>
         <NavLink to="/logs" style={linkStyle}>Logs</NavLink>
         <NavLink to="/experiments" style={linkStyle}>Experiments</NavLink>
       </nav>

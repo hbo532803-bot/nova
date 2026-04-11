@@ -9,6 +9,7 @@ import Opportunities from "../../pages/opportunities";
 import Execution from "../../pages/execution";
 import Experiments from "../../pages/experiments";
 import Logs from "../../pages/logs";
+import SocialPage from "../../pages/social";
 
 import ProtectedRoute from "../auth/ProtectedRoute";
 
@@ -70,6 +71,15 @@ export default function AppRouter() {
           element={
             <ProtectedRoute>
               <Logs />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/social"
+          element={
+            <ProtectedRoute>
+              <SocialPage />
             </ProtectedRoute>
           }
         />

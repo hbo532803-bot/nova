@@ -41,6 +41,7 @@ from backend.services.delivery_service import DeliveryService
 from backend.intelligence.traffic_engine import TrafficEngine
 from backend.intelligence.signal_engine import SignalEngine
 from backend.intelligence.metrics_engine import MetricsEngine
+from backend.intelligence.social_growth_engine import SocialGrowthEngine
 import logging
 import threading
 import ast
@@ -55,6 +56,7 @@ _delivery_service = DeliveryService()
 _traffic_engine = TrafficEngine()
 _signal_engine = SignalEngine()
 _metrics_engine = MetricsEngine()
+_social_growth_engine = SocialGrowthEngine()
 _order_logger = logging.getLogger(__name__)
 
 
@@ -977,6 +979,92 @@ def research_last(admin=Depends(get_current_admin)):
         return {"ok": True, "research": json.loads(str(row["value"]))}
     except Exception:
         return {"ok": True, "research": str(row["value"])}
+
+
+# -------------------------------------------------
+# SOCIAL GROWTH SYSTEM (approval-gated)
+# -------------------------------------------------
+
+@router.post("/social/market-listening/ingest")
+def social_market_listening_ingest(payload: dict, admin=Depends(get_current_admin)):
+    signals = payload.get("signals") or []
+    if not isinstance(signals, list) or not signals:
+        raise HTTPException(status_code=400, detail="signals list required")
+    result = _social_growth_engine.ingest_market_signals(signals=signals)
+    _social_growth_engine.append_activity(action="market_listening_ingest", details={"count": len(signals), "admin": admin.get("username")})
+    return result
+
+
+@router.post("/social/content/generate")
+def social_generate_content(payload: dict | None = None, admin=Depends(get_current_admin)):
+    body = payload or {}
+    result = _social_growth_engine.generate_content_suggestions(
+        progress_update=str(body.get("progress_update") or ""),
+        limit=int(body.get("limit") or 6),
+    )
+    _social_growth_engine.append_activity(action="content_generate", details={"result": result, "admin": admin.get("username")})
+    return result
+
+
+@router.post("/social/content/queue")
+def social_queue_post(payload: dict, admin=Depends(get_current_admin)):
+    required = ["platform", "content_type", "hook", "body", "cta"]
+    missing = [k for k in required if not payload.get(k)]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"missing fields: {', '.join(missing)}")
+    result = _social_growth_engine.queue_social_post(
+        platform=str(payload.get("platform")),
+        content_type=str(payload.get("content_type")),
+        hook=str(payload.get("hook")),
+        body=str(payload.get("body")),
+        cta=str(payload.get("cta")),
+        scheduled_for=str(payload.get("scheduled_for") or ""),
+    )
+    _social_growth_engine.append_activity(action="content_queue", details={"result": result, "admin": admin.get("username")})
+    return result
+
+
+@router.post("/social/engagement/ingest")
+def social_ingest_engagement(payload: dict, admin=Depends(get_current_admin)):
+    events = payload.get("events") or []
+    if not isinstance(events, list) or not events:
+        raise HTTPException(status_code=400, detail="events list required")
+    result = _social_growth_engine.ingest_engagement(events=events)
+    _social_growth_engine.append_activity(action="engagement_ingest", details={"result": result, "admin": admin.get("username")})
+    return result
+
+
+@router.post("/social/replies/{queue_id}/status")
+def social_update_reply_status(queue_id: int, payload: dict, admin=Depends(get_current_admin)):
+    status = str(payload.get("status") or "").strip().lower()
+    if not status:
+        raise HTTPException(status_code=400, detail="status required")
+    result = _social_growth_engine.update_reply_status(queue_id=queue_id, status=status, admin_user=str(admin.get("username")))
+    _social_growth_engine.append_activity(action="reply_status_update", details={"queue_id": queue_id, "status": status, "admin": admin.get("username")})
+    return result
+
+
+@router.post("/social/content/{content_id}/status")
+def social_update_content_status(content_id: int, payload: dict, admin=Depends(get_current_admin)):
+    status = str(payload.get("status") or "").strip().lower()
+    if not status:
+        raise HTTPException(status_code=400, detail="status required")
+    result = _social_growth_engine.update_content_status(content_id=content_id, status=status, admin_user=str(admin.get("username")))
+    _social_growth_engine.append_activity(action="content_status_update", details={"content_id": content_id, "status": status, "admin": admin.get("username")})
+    return result
+
+
+@router.post("/social/leads/{lead_id}/suggest-dm")
+def social_suggest_dm(lead_id: int, payload: dict | None = None, admin=Depends(get_current_admin)):
+    body = payload or {}
+    result = _social_growth_engine.suggest_dm(lead_id=lead_id, context=str(body.get("context") or ""))
+    _social_growth_engine.append_activity(action="dm_suggest", details={"lead_id": lead_id, "admin": admin.get("username"), "result": result})
+    return result
+
+
+@router.get("/social/console")
+def social_console(admin=Depends(get_current_admin)):
+    return _social_growth_engine.get_console_snapshot()
 
 
 # -------------------------------------------------

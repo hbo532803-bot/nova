@@ -618,6 +618,93 @@ def initialize_all_tables(reset: bool = False):
             ON real_signal_events(mission_id, experiment_id, event_type, is_simulated, created_at)
             """)
 
+            # ================= SOCIAL GROWTH =================
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_content_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                hook TEXT NOT NULL,
+                body TEXT NOT NULL,
+                cta TEXT NOT NULL,
+                source_event_id INTEGER,
+                status TEXT DEFAULT 'pending_approval',
+                scheduled_for DATETIME,
+                reviewed_by TEXT,
+                reviewed_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_social_content_status
+            ON social_content_queue(status, platform, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_engagement_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                username TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                intent_level TEXT DEFAULT 'low',
+                intent_score REAL DEFAULT 0,
+                context_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_reply_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                engagement_event_id INTEGER,
+                lead_id INTEGER,
+                platform TEXT NOT NULL,
+                username TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                suggestion TEXT NOT NULL,
+                status TEXT DEFAULT 'pending_approval',
+                reviewed_by TEXT,
+                reviewed_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_social_reply_status
+            ON social_reply_queue(status, platform, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                username TEXT NOT NULL,
+                lead_profile TEXT NOT NULL,
+                intent_level TEXT DEFAULT 'low',
+                intent_score REAL DEFAULT 0,
+                source_event_id INTEGER,
+                status TEXT DEFAULT 'new',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_social_leads_intent
+            ON social_leads(intent_level, platform, created_at)
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS social_activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                details TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS session_journey (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
