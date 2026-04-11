@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNovaStore } from "../state/novaStore";
 import {
   getSystemState,
@@ -46,31 +46,34 @@ export default function useNovaSystem(){
   const setApiError = useNovaStore(s=>s.setApiError);
   const setLoading = useNovaStore(s=>s.setLoading);
   const setInitialized = useNovaStore(s=>s.setInitialized);
+  const inFlightRef = useRef(false);
+  const tickRef = useRef(0);
+  const abortRef = useRef(null);
+  const mountedRef = useRef(false);
 
   useEffect(()=>{
-
-    let inFlight = false;
-    let tick = 0;
-    let abort = null;
+    mountedRef.current = true;
 
     async function load(){
+      if (!mountedRef.current || inFlightRef.current) return;
+      inFlightRef.current = true;
+      tickRef.current += 1;
 
       try{
         if (!useNovaStore.getState().initialized) setLoading(true);
         setApiError("");
-        if (inFlight) return;
-        inFlight = true;
-        tick += 1;
-        abort?.abort?.();
-        abort = new AbortController();
+        abortRef.current?.abort?.();
+        const controller = new AbortController();
+        abortRef.current = controller;
 
         // Fast path (every 5s): minimal operational state to keep UI alive.
         const [state, confidence, cmdRes, stabilityRes] = await Promise.all([
-          getSystemState({ signal: abort.signal }),
-          getConfidence({ signal: abort.signal }),
-          listCommands(50, { signal: abort.signal }),
-          getStabilityHealth({ signal: abort.signal })
+          getSystemState({ signal: controller.signal }),
+          getConfidence({ signal: controller.signal }),
+          listCommands(50, { signal: controller.signal }),
+          getStabilityHealth({ signal: controller.signal })
         ]);
+        if (!mountedRef.current || controller.signal.aborted) return;
 
         setSystemState(state || {});
         setConfidence(confidence || {});
@@ -78,28 +81,29 @@ export default function useNovaSystem(){
         setStabilityHealth(stabilityRes || {});
 
         // Slow path (every ~30s): heavy endpoints.
-        if (tick % 6 === 0) {
+        if (tickRef.current % 6 === 0) {
           const [
             agentsRes, oppRes, expRes, reflRes, playbooksRes, analyticsRes,
             activityRes, trendRes, prodRes, kgRes, portRes, stratRes,
             kgInsightsRes, cogRes, researchRes
           ] = await Promise.all([
-            listAgents(undefined, { signal: abort.signal }),
-            listOpportunities({ signal: abort.signal }),
-            listExperiments({ signal: abort.signal }),
-            listReflections(50, { signal: abort.signal }),
-            listPlaybooks({ signal: abort.signal }),
-            getExperimentAnalytics(50, { signal: abort.signal }),
-            getAgentActivity(200, { signal: abort.signal }),
-            getConfidenceTrend(50, { signal: abort.signal }),
-            getAgentProductivity(7, { signal: abort.signal }),
-            getKnowledgeGraphSummary({ signal: abort.signal }),
-            getPortfolioHealth({ signal: abort.signal }),
-            getCurrentStrategy({ signal: abort.signal }),
-            getKnowledgeInsights({ signal: abort.signal }),
-            getCognitiveLast({ signal: abort.signal }),
-            getResearchLast({ signal: abort.signal })
+            listAgents(undefined, { signal: controller.signal }),
+            listOpportunities({ signal: controller.signal }),
+            listExperiments({ signal: controller.signal }),
+            listReflections(50, { signal: controller.signal }),
+            listPlaybooks({ signal: controller.signal }),
+            getExperimentAnalytics(50, { signal: controller.signal }),
+            getAgentActivity(200, { signal: controller.signal }),
+            getConfidenceTrend(50, { signal: controller.signal }),
+            getAgentProductivity(7, { signal: controller.signal }),
+            getKnowledgeGraphSummary({ signal: controller.signal }),
+            getPortfolioHealth({ signal: controller.signal }),
+            getCurrentStrategy({ signal: controller.signal }),
+            getKnowledgeInsights({ signal: controller.signal }),
+            getCognitiveLast({ signal: controller.signal }),
+            getResearchLast({ signal: controller.signal })
           ]);
+          if (!mountedRef.current || controller.signal.aborted) return;
 
           setAgents(agentsRes?.agents || []);
           setOpportunities(oppRes?.proposals || []);
@@ -120,15 +124,19 @@ export default function useNovaSystem(){
 
       }
       catch(e){
-
+        if (e?.name === "AbortError") return;
         console.error("Nova load failed",e);
-        setApiError("Unable to load admin data. Check backend connectivity and token.");
+        if (mountedRef.current) {
+          setApiError("Unable to load admin data. Check backend connectivity and token.");
+        }
 
       }
       finally{
-        inFlight = false;
-        setLoading(false);
-        setInitialized(true);
+        inFlightRef.current = false;
+        if (mountedRef.current) {
+          setLoading(false);
+          setInitialized(true);
+        }
       }
 
     }
@@ -138,9 +146,10 @@ export default function useNovaSystem(){
     const timer = setInterval(load,5000);
 
     return ()=>{
-      abort?.abort?.();
+      mountedRef.current = false;
+      abortRef.current?.abort?.();
       clearInterval(timer);
     };
 
-  },[]);
+  },[setAgentActivity, setAgentProductivity, setAgents, setApiError, setCognitiveLast, setCommands, setConfidence, setConfidenceTrend, setCurrentStrategy, setExperimentAnalytics, setExperiments, setInitialized, setKnowledgeGraph, setKnowledgeInsights, setLoading, setOpportunities, setPlaybooks, setPortfolioHealth, setReflections, setResearchLast, setStabilityHealth, setSystemState]);
 }
