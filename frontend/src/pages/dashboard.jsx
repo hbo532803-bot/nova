@@ -19,11 +19,13 @@ export default function Dashboard() {
   useEventBus();
   const loading = useNovaStore((s) => s.loading);
   const apiError = useNovaStore((s) => s.apiError);
+  const realtimeFallback = useNovaStore((s) => s.realtimeFallback);
 
   return (
     <MainLayout>
       <div className="admin-page">
         {apiError ? <p className="admin-error">{apiError}</p> : null}
+        {realtimeFallback ? <p className="admin-subtext">Real-time feed unavailable. Running in polling fallback mode.</p> : null}
         {loading ? <p className="admin-subtext">Loading live system state…</p> : null}
         <SystemMetrics />
 

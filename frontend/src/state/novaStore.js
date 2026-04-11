@@ -24,6 +24,8 @@ export const useNovaStore = create((set)=>({
   logs:[],
   apiError:"",
   initialized:false,
+  realtimeConnected:false,
+  realtimeFallback:false,
 
   loading:true,
 
@@ -49,6 +51,8 @@ export const useNovaStore = create((set)=>({
   setLogs:(data)=>set({logs:data}),
   setApiError:(msg)=>set({apiError:msg}),
   setInitialized:(v)=>set({initialized:v}),
+  setRealtimeConnected:(v)=>set({realtimeConnected:v}),
+  setRealtimeFallback:(v)=>set({realtimeFallback:v}),
 
   setLoading:(v)=>set({loading:v})
 

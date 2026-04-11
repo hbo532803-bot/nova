@@ -3,6 +3,9 @@ import { API_BASE_URL } from "./apiConfig";
 export async function apiRequest(path, options = {}) {
   const { auth = true, ...requestOptions } = options;
   const token = localStorage.getItem("nova_token");
+  if (auth && !token) {
+    throw new Error("Session expired, please login again");
+  }
   const headers = {
     ...(requestOptions.body ? { "Content-Type": "application/json" } : {}),
     ...(requestOptions.headers || {})
@@ -19,10 +22,11 @@ export async function apiRequest(path, options = {}) {
 
   if (res.status === 401) {
     localStorage.removeItem("nova_token");
+    sessionStorage.setItem("nova_auth_message", "Session expired, please login again");
     if (window.location.pathname !== "/login") {
       window.location.href = "/login";
     }
-    throw new Error("Unauthorized");
+    throw new Error("Session expired, please login again");
   }
 
   const isJson = (res.headers.get("content-type") || "").includes("application/json");

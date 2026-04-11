@@ -56,7 +56,7 @@ export default function useNovaSystem(){
     async function load(){
 
       try{
-        setLoading(true);
+        if (!useNovaStore.getState().initialized) setLoading(true);
         setApiError("");
         if (inFlight) return;
         inFlight = true;

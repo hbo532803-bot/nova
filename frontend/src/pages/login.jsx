@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../services/apiConfig";
+import { validateStoredSession } from "../services/auth";
 
 const API = API_BASE_URL;
 
@@ -9,12 +10,21 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionMessage, setSessionMessage] = useState("");
 
   const navigate = useNavigate();
   useEffect(() => {
-    if (localStorage.getItem("nova_token")) {
-      navigate("/dashboard");
+    const msg = sessionStorage.getItem("nova_auth_message");
+    if (msg) {
+      setSessionMessage(msg);
+      sessionStorage.removeItem("nova_auth_message");
     }
+    (async () => {
+      const session = await validateStoredSession();
+      if (session.valid) {
+        navigate("/dashboard");
+      }
+    })();
   }, [navigate]);
 
   async function login() {
@@ -58,6 +68,7 @@ export default function Login() {
     <div style={{ padding: 40, maxWidth: 420, margin: "40px auto", background: "#020617", border: "1px solid #1e293b", borderRadius: 12 }}>
       <h1>NOVA LOGIN</h1>
       <p style={{ color: "#94a3b8" }}>Admin access required.</p>
+      {sessionMessage ? <p style={{ color: "#fbbf24" }}>{sessionMessage}</p> : null}
 
       <input placeholder="username" onChange={(e) => setUsername(e.target.value)} />
 
