@@ -15,10 +15,18 @@ export async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...requestOptions,
+      headers
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw error;
+    }
+    throw new Error(error?.message || "Network request failed");
+  }
 
   if (res.status === 401) {
     localStorage.removeItem("nova_token");
