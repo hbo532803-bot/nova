@@ -1,27 +1,20 @@
-import { API_BASE_URL } from "./apiConfig";
-
-const API = `${API_BASE_URL}/api`;
+import { apiRequest } from "./http";
 
 export async function getAgents() {
-  const res = await fetch(`${API}/agents`);
-  return res.json();
+  const res = await apiRequest("/api/agents");
+  return res?.agents || [];
 }
 
 export async function getAgentStatus(id) {
-  const res = await fetch(`${API}/agents/${id}/status`);
-  return res.json();
+  const res = await apiRequest("/api/agents");
+  const list = res?.agents || [];
+  return list.find((a) => Number(a.id) === Number(id)) || null;
 }
 
 export async function startAgent(id) {
-  const res = await fetch(`${API}/agents/${id}/start`, {
-    method: "POST"
-  });
-  return res.json();
+  return apiRequest(`/api/agents/${id}/wake`, { method: "POST" });
 }
 
 export async function stopAgent(id) {
-  const res = await fetch(`${API}/agents/${id}/stop`, {
-    method: "POST"
-  });
-  return res.json();
+  return apiRequest(`/api/agents/${id}/hibernate`, { method: "POST" });
 }

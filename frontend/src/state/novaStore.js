@@ -22,6 +22,8 @@ export const useNovaStore = create((set)=>({
   cognitiveLast:{},
   researchLast:{},
   logs:[],
+  apiError:"",
+  initialized:false,
 
   loading:true,
 
@@ -45,6 +47,8 @@ export const useNovaStore = create((set)=>({
   setCognitiveLast:(data)=>set({cognitiveLast:data}),
   setResearchLast:(data)=>set({researchLast:data}),
   setLogs:(data)=>set({logs:data}),
+  setApiError:(msg)=>set({apiError:msg}),
+  setInitialized:(v)=>set({initialized:v}),
 
   setLoading:(v)=>set({loading:v})
 

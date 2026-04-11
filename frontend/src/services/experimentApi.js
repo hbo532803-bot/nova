@@ -1,28 +1,19 @@
-import { API_BASE_URL } from "./apiConfig";
-
-const API = `${API_BASE_URL}/api`;
+import { apiRequest } from "./http";
 
 export async function getExperiments() {
-  const res = await fetch(`${API}/experiments`);
-  return res.json();
+  const data = await apiRequest("/api/experiments");
+  return data?.experiments || [];
 }
 
 export async function runExperiment(data) {
-  const res = await fetch(`${API}/experiments/run`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(data)
-  });
-
-  return res.json();
+  const id = data?.id;
+  if (!id) throw new Error("Experiment id is required");
+  return apiRequest(`/api/experiments/${id}/run`, { method: "POST" });
 }
 
 export async function stopExperiment(id) {
-  const res = await fetch(`${API}/experiments/${id}/stop`, {
-    method: "POST"
+  return apiRequest("/api/commands", {
+    method: "POST",
+    body: JSON.stringify({ text: `stop experiment ${id}` })
   });
-
-  return res.json();
 }

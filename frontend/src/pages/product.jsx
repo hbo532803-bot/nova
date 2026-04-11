@@ -22,10 +22,12 @@ export default function ProductPage() {
   const [orderStatus, setOrderStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   async function generatePlan() {
     if (!input.trim()) return;
     setError("");
+    setNotice("");
     setLoading(true);
     setOrderStatus(null);
     setSelectedPlan("");
@@ -34,6 +36,7 @@ export default function ProductPage() {
     try {
       const response = await createOrder(input, { source: "product_ui", payment_status: "unpaid" });
       setOrder({ ...response, payment_status: "unpaid" });
+      setNotice("Plan generated. Select a tier to continue.");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -53,6 +56,7 @@ export default function ProductPage() {
       await confirmOrder(order.order_id, selectedPlan);
       const status = await fetchOrderStatus(order.order_id);
       setOrderStatus(status);
+      setNotice("Payment confirmed. Execution started.");
     } catch (e) {
       setPaymentStatus("unpaid");
       setError(e.message);
@@ -68,9 +72,11 @@ export default function ProductPage() {
         const status = await fetchOrderStatus(order.order_id);
         setOrderStatus(status);
         if (status.status === "completed") {
+          setNotice("Execution completed successfully.");
           clearInterval(timer);
         }
-      } catch {
+      } catch (e) {
+        setError(e.message || "Unable to refresh order status.");
         clearInterval(timer);
       }
     }, 2500);
@@ -131,6 +137,7 @@ export default function ProductPage() {
         </button>
 
         {error && <p className="error-text">{error}</p>}
+        {notice && <p style={{ color: "#34d399", marginTop: 12 }}>{notice}</p>}
       </section>
 
       {loading && !order && (
