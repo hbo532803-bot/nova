@@ -55,6 +55,7 @@ export default function useNovaSystem(){
     mountedRef.current = true;
 
     async function load(){
+      if (document.visibilityState === "hidden") return;
       if (!mountedRef.current || inFlightRef.current) return;
       inFlightRef.current = true;
       tickRef.current += 1;
@@ -143,12 +144,31 @@ export default function useNovaSystem(){
 
     load();
 
-    const timer = setInterval(load,5000);
+    let timer = null;
+    const schedule = () => {
+      const delay = document.visibilityState === "hidden" ? 20000 : 5000;
+      timer = setTimeout(async () => {
+        await load();
+        if (mountedRef.current) schedule();
+      }, delay);
+    };
+    schedule();
+
+    const onVisibility = () => {
+      if (!mountedRef.current) return;
+      if (timer) clearTimeout(timer);
+      if (document.visibilityState === "visible") {
+        load();
+      }
+      schedule();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return ()=>{
       mountedRef.current = false;
       abortRef.current?.abort?.();
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
 
   },[setAgentActivity, setAgentProductivity, setAgents, setApiError, setCognitiveLast, setCommands, setConfidence, setConfidenceTrend, setCurrentStrategy, setExperimentAnalytics, setExperiments, setInitialized, setKnowledgeGraph, setKnowledgeInsights, setLoading, setOpportunities, setPlaybooks, setPortfolioHealth, setReflections, setResearchLast, setStabilityHealth, setSystemState]);

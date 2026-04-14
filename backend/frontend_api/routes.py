@@ -140,10 +140,62 @@ def _run_order_execution(order_id: str, command: str):
         _order_logger.exception("order execution failed")
         _update_order(
             order_id,
-            status="COMPLETED",
+            status="FAILED",
             progress=100,
-            execution_result=json.dumps({"error": "order_execution_failed", "final_result": None}),
+            execution_result=json.dumps(
+                {
+                    "error": {
+                        "error_code": "order_execution_failed",
+                        "message": "Order execution failed. Please retry.",
+                        "retryable": True,
+                    },
+                    "final_result": None,
+                }
+            ),
         )
+
+
+def _normalize_order_result(result_payload: dict) -> tuple[dict | None, dict | None]:
+    if not isinstance(result_payload, dict):
+        return None, None
+
+    final_result = result_payload.get("final_result")
+    if not isinstance(final_result, dict):
+        final_result = None
+
+    error_obj = result_payload.get("error")
+    if isinstance(error_obj, str):
+        error_obj = {
+            "error_code": "order_execution_failed",
+            "message": error_obj,
+            "retryable": False,
+        }
+    elif not isinstance(error_obj, dict):
+        error_obj = None
+
+    preview_url = ""
+    deployment_url = ""
+    summary = ""
+
+    if final_result:
+        deployment = final_result.get("deployment") if isinstance(final_result.get("deployment"), dict) else {}
+        output = final_result.get("output") if isinstance(final_result.get("output"), dict) else {}
+        preview_url = str(deployment.get("share_url") or output.get("preview_url") or output.get("website_url") or "").strip()
+        deployment_url = str(deployment.get("url") or output.get("deployment_url") or "").strip()
+        summary = str(
+            final_result.get("error")
+            or output.get("offer")
+            or output.get("headline")
+            or final_result.get("status")
+            or ""
+        ).strip()
+
+    normalized = {
+        "preview_url": preview_url,
+        "deployment_url": deployment_url,
+        "summary": summary or "Execution completed.",
+    } if final_result else None
+    return normalized, error_obj
 
 # -------------------------------------------------
 # Utility
@@ -473,13 +525,23 @@ def order_status(id: str):
         raise HTTPException(status_code=404, detail="order not found")
 
     result_payload = _safe_json_parse(row["execution_result"])
+    normalized_result, structured_error = _normalize_order_result(result_payload)
+    status_upper = str(row["status"] or "PENDING").upper()
+    summary = ""
+    if normalized_result:
+        summary = str(normalized_result.get("summary") or "")
+    elif structured_error:
+        summary = str(structured_error.get("message") or "")
+
     return {
-        "order_id": str(row["id"]),
-        "mission_id": str(row["mission_id"] or ""),
-        "status": str(row["status"] or "PENDING").lower(),
+        "id": str(row["id"]),
+        "status": status_upper.lower(),
         "progress": int(row["progress"] or 0),
         "selected_plan": row["selected_plan"],
-        "result": result_payload if str(row["status"] or "").upper() in {"COMPLETED"} else None,
+        "mission_id": str(row["mission_id"] or ""),
+        "summary": summary,
+        "result": normalized_result if status_upper == "COMPLETED" else None,
+        "error": structured_error if status_upper == "FAILED" else None,
     }
 
 
