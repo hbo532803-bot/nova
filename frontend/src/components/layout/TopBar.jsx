@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-export default function TopBar(){
+export default function TopBar({ onMenuToggle, showMenuButton = false }){
 
   const navigate = useNavigate();
 
@@ -23,19 +23,36 @@ export default function TopBar(){
 
       <span>NOVA CONTROL SYSTEM</span>
 
-      <button
-        onClick={logout}
-        style={{
-          background:"#dc2626",
-          border:"none",
-          padding:"6px 12px",
-          color:"white",
-          borderRadius:"6px",
-          cursor:"pointer"
-        }}
-      >
-        Logout
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        {showMenuButton ? (
+          <button
+            onClick={onMenuToggle}
+            style={{
+              background:"#1d4ed8",
+              border:"none",
+              padding:"6px 12px",
+              color:"white",
+              borderRadius:"6px",
+              cursor:"pointer"
+            }}
+          >
+            Menu
+          </button>
+        ) : null}
+        <button
+          onClick={logout}
+          style={{
+            background:"#dc2626",
+            border:"none",
+            padding:"6px 12px",
+            color:"white",
+            borderRadius:"6px",
+            cursor:"pointer"
+          }}
+        >
+          Logout
+        </button>
+      </div>
 
     </div>
 

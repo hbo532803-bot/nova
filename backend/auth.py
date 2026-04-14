@@ -12,7 +12,10 @@ from fastapi.security import OAuth2PasswordBearer
 
 SECRET_KEY = os.getenv("NOVA_SECRET_KEY")
 if not SECRET_KEY:
-    raise RuntimeError("NOVA_SECRET_KEY environment variable is required for authentication")
+    raise RuntimeError(
+        "Missing required environment variable: NOVA_SECRET_KEY. "
+        "Set it in your environment or .env file (example: NOVA_SECRET_KEY=replace-with-a-secret)."
+    )
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -23,7 +26,10 @@ ADMIN_USERNAME = os.getenv("NOVA_ADMIN_USER")
 ADMIN_PASSWORD = os.getenv("NOVA_ADMIN_PASS")
 
 if not ADMIN_USERNAME or not ADMIN_PASSWORD:
-    raise RuntimeError("NOVA_ADMIN_USER and NOVA_ADMIN_PASS must be set for admin authentication")
+    raise RuntimeError(
+        "Missing required environment variables: NOVA_ADMIN_USER and/or NOVA_ADMIN_PASS. "
+        "Set both values (example: NOVA_ADMIN_USER=admin, NOVA_ADMIN_PASS=change-me)."
+    )
 
 
 # =========================

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { confirmOrder, createOrder, fetchOrderStatus } from "../services/orderApi";
+import { formatCurrencyDisplay, parseCurrencyToNumber } from "../utils/formatters";
 import "../styles/product.css";
 
 const SUGGESTIONS = [
@@ -74,6 +75,9 @@ export default function ProductPage() {
         if (status.status === "completed") {
           setNotice("Execution completed successfully.");
           clearInterval(timer);
+        } else if (status.status === "failed") {
+          setError(status?.error?.message || "Execution failed. Please try again.");
+          clearInterval(timer);
         }
       } catch (e) {
         setError(e.message || "Unable to refresh order status.");
@@ -96,9 +100,9 @@ export default function ProductPage() {
 
   const progress = orderStatus?.progress ?? 0;
   const result = orderStatus?.result || null;
-  const websiteLink = result?.website_url || result?.preview_url || result?.deployment_url || "";
+  const websiteLink = result?.preview_url || result?.deployment_url || result?.website_url || "";
 
-  const planPrice = Number(selectedOffer?.estimated_price || 1200);
+  const planPrice = parseCurrencyToNumber(selectedOffer?.estimated_price, 1200);
   const estimatedLeads = Math.max(20, Math.round(planPrice / 40));
   const potentialRevenue = estimatedLeads * 250;
   const growthPotential = potentialRevenue > 15000 ? "High" : potentialRevenue > 7000 ? "Medium" : "Early-stage";
@@ -172,7 +176,7 @@ export default function ProductPage() {
                     onClick={() => setSelectedPlan(tier)}
                   >
                     <h4>{tier}</h4>
-                    <p className="price">${offer.estimated_price || "-"}</p>
+                    <p className="price">{formatCurrencyDisplay(offer.estimated_price, "-")}</p>
                     <ul>
                       {(PLAN_FEATURES[tier] || []).map((f) => (
                         <li key={f}>{f}</li>
@@ -188,7 +192,7 @@ export default function ProductPage() {
           <article className="card">
             <h3>Payment</h3>
             <p><strong>Plan:</strong> {selectedPlan || "Choose a plan"}</p>
-            <p><strong>Price:</strong> ${selectedOffer?.estimated_price || "-"}</p>
+            <p><strong>Price:</strong> {formatCurrencyDisplay(selectedOffer?.estimated_price, "-")}</p>
             <p><strong>You get:</strong> {(PLAN_FEATURES[selectedPlan] || ["Select a plan to see deliverables"]).join(", ")}</p>
             <p><strong>Payment status:</strong> {paymentStatus}</p>
 
@@ -213,6 +217,9 @@ export default function ProductPage() {
           <article className="card">
             <h3>Execution Status</h3>
             <p><strong>Current:</strong> {orderStatus.status}</p>
+            {orderStatus.status === "failed" ? (
+              <p className="error-text">{orderStatus?.error?.message || "Execution failed."}</p>
+            ) : null}
             <div className="step-list">
               {progressSteps.map((step) => (
                 <div key={step.key} className={`step ${progress >= step.doneAt ? "done" : ""}`}>
